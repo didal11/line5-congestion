@@ -19,6 +19,7 @@ echo === Line 5: Jongno 3-ga to Hwagok ===
 echo 1. Project status
 echo 2. Development plan
 echo 3. Global Python packages
+echo 4. Collect or verify official source data
 echo 0. Exit
 set "CHOICE="
 set /p "CHOICE=Select: "
@@ -26,9 +27,13 @@ if "%CHOICE%"=="0" exit /b 0
 if "%CHOICE%"=="1" goto status
 if "%CHOICE%"=="2" goto plan
 if "%CHOICE%"=="3" goto check
+if "%CHOICE%"=="4" goto collect
 goto menu
 :status
 "%PYTHON%" -m subway.cli status
+goto done
+:collect
+"%PYTHON%" -m subway.cli collect
 goto done
 :plan
 "%PYTHON%" -m subway.cli plan
