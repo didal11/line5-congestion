@@ -16,6 +16,17 @@ SEOUL_PAGE = "https://data.seoul.go.kr/dataList/OA-12928/A/1/datasetView.do"
 TIMETABLE_PAGE = "https://www.data.go.kr/data/15098251/fileData.do"
 DOWNLOAD = "https://datafile.seoul.go.kr/bigfile/iot/inf/nio_download.do?useCache=false"
 SOURCES = [
+    *[
+        {"filename": f"congestion_{date}.{extension}", "source_date": f"{date[:4]}-{date[4:6]}-{date[6:]}", "page": SEOUL_PAGE, "url": DOWNLOAD, "post": {"infId": "OA-12928", "infSeq": "1", "seq": seq}, "license": "KOGL Type 3: attribution, no derivatives"}
+        for date, extension, seq in (
+            ("20240331", "csv", "11"),
+            ("20240630", "csv", "12"),
+            ("20241231", "csv", "15"),
+            ("20250331", "xlsx", "16"),
+            ("20250630", "csv", "17"),
+            ("20250930", "csv", "18"),
+        )
+    ],
     {"filename": "congestion_20260630.xlsx", "source_date": "2026-06-30", "page": SEOUL_PAGE, "url": DOWNLOAD, "post": {"infId": "OA-12928", "infSeq": "1", "seq": "23"}, "license": "KOGL Type 3: attribution, no derivatives"},
     {"filename": "congestion_20260331.xlsx", "source_date": "2026-03-31", "page": SEOUL_PAGE, "url": DOWNLOAD, "post": {"infId": "OA-12928", "infSeq": "1", "seq": "22"}, "license": "KOGL Type 3: attribution, no derivatives"},
     {"filename": "congestion_20251130.csv", "source_date": "2025-11-30", "page": SEOUL_PAGE, "url": DOWNLOAD, "post": {"infId": "OA-12928", "infSeq": "1", "seq": "19"}, "license": "KOGL Type 3: attribution, no derivatives"},
