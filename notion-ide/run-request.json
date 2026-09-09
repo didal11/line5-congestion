@@ -1,7 +1,7 @@
 {
-  "request_id": "verify-package-module-run-20260909-2057",
+  "request_id": "6c1f026c-c2a7-4a61-a7b0-e72285106b95",
   "target": "github-hosted",
-  "entrypoint": "src/benchmark.py",
+  "entrypoint": "src/evaluate.py",
   "workspace_root": "",
-  "requested_at": "2026-09-09T11:57:00.000Z"
+  "requested_at": "2026-09-09T12:01:07.228Z"
 }
