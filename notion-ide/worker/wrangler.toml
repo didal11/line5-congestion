@@ -2,6 +2,10 @@ name = "line5-notion-ide"
 main = "src/app.js"
 compatibility_date = "2026-09-01"
 
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
 [vars]
 GITHUB_OWNER = "didal11"
 GITHUB_REPO = "line5-congestion"
