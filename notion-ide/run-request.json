@@ -1,7 +1,7 @@
 {
-  "request_id": "manual-lifecycle-smoke-20260909",
+  "request_id": "339535d5-2905-4177-8383-f066e8e1ea2d",
   "target": "github-hosted",
   "entrypoint": "src/config.py",
   "workspace_root": "",
-  "requested_at": "2026-09-09T11:09:00Z"
+  "requested_at": "2026-09-09T11:14:42.381Z"
 }
