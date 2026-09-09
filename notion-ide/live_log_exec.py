@@ -8,8 +8,6 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.error
-import urllib.request
 
 BATCH_SECONDS = 5.0
 MAX_BATCH_BYTES = 256 * 1024
@@ -45,19 +43,34 @@ def post_live_log(text: str, *, done: bool = False, exit_code: int | None = None
     if exit_code is not None:
         payload["exit_code"] = exit_code
     data = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={
-            "content-type": "application/json",
-            "x-ide-key": key,
-        },
-    )
+
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            response.read()
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        result = subprocess.run(
+            [
+                "curl",
+                "--fail",
+                "--show-error",
+                "--silent",
+                "--max-time",
+                "10",
+                "-H",
+                f"x-ide-key: {key}",
+                "-H",
+                "content-type: application/json",
+                "--data-binary",
+                "@-",
+                url,
+            ],
+            input=data,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=12,
+            check=False,
+        )
+        if result.returncode != 0:
+            message = result.stderr.decode("utf-8", errors="replace").strip()
+            print(f"[live-log] upload failed: {message or 'curl failed'}", file=sys.stderr, flush=True)
+    except (OSError, subprocess.TimeoutExpired) as exc:
         print(f"[live-log] upload failed: {exc}", file=sys.stderr, flush=True)
 
 
