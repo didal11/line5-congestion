@@ -1,10 +1,10 @@
 name: Validate Notion IDE
 
-# Validates the embeddable Worker on main.
+# Validate Worker changes on any branch before they reach main.
 on:
   push:
     branches:
-      - main
+      - "**"
     paths:
       - notion-ide/worker/**
       - .github/workflows/notion-ide-*.yml
@@ -27,7 +27,10 @@ jobs:
           node-version: "22"
 
       - name: Check JavaScript syntax
-        run: node --check notion-ide/worker/src/index.js
+        run: |
+          node --check notion-ide/worker/src/index.js
+          node --check notion-ide/worker/src/app.js
+          node --check notion-ide/worker/src/ui.js
 
       - name: Install Wrangler
         working-directory: notion-ide/worker
