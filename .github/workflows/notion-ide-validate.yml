@@ -26,11 +26,23 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Check JavaScript syntax
+      - name: Check Worker JavaScript syntax
         run: |
           node --check notion-ide/worker/src/index.js
           node --check notion-ide/worker/src/app.js
           node --check notion-ide/worker/src/ui.js
+
+      - name: Check embedded browser script syntax
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('notion-ide/worker/src/ui.js').read_text(encoding='utf-8')
+          start = source.index('<script>') + len('<script>')
+          end = source.index('</script>', start)
+          Path('/tmp/notion-ide-browser.js').write_text(source[start:end], encoding='utf-8')
+          PY
+          node --check /tmp/notion-ide-browser.js
 
       - name: Install Wrangler
         working-directory: notion-ide/worker
