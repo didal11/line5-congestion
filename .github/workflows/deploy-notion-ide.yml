@@ -63,6 +63,22 @@ jobs:
             https://line5-notion-ide.alstn101059.workers.dev/ > /tmp/notion-ide.html
           test -s /tmp/notion-ide.html
 
+      - name: Smoke test bundled editor font
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://line5-notion-ide.alstn101059.workers.dev'
+          FONT_STATUS="$(curl --show-error --silent \
+            -o /tmp/CascadiaCode-Regular.woff2 -w '%{http_code}' \
+            "$BASE/fonts/CascadiaCode-Regular.woff2")"
+          echo "Font HTTP: $FONT_STATUS"
+          test "$FONT_STATUS" = "200"
+          FONT_BYTES="$(wc -c < /tmp/CascadiaCode-Regular.woff2)"
+          echo "Font bytes: $FONT_BYTES"
+          test "$FONT_BYTES" -gt 100000
+          grep -q 'CascadiaCode-Regular.woff2' /tmp/notion-ide.html
+          grep -q 'id="activeLine"' /tmp/notion-ide.html
+
       - name: Smoke test explorer API
         shell: bash
         env:
