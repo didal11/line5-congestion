@@ -133,7 +133,7 @@ async function apiBootstrap(env) {
     owner: env.GITHUB_OWNER,
     repo: env.GITHUB_REPO,
     root: env.EXPLORER_ROOT || "",
-    run_root: env.RUN_ROOT || "reference/rps",
+    run_root: env.RUN_ROOT || "",
     branch: env.WORKSPACE_BRANCH,
     branch_created: branch.created,
   });
@@ -176,7 +176,7 @@ async function apiRun(request, env) {
   let currentSha = null;
   try { currentSha = (await getContent(env, requestPath)).sha; }
   catch (error) { if (!(error instanceof HttpError) || error.status !== 404) throw error; }
-  const runRoot = env.RUN_ROOT || "reference/rps";
+  const runRoot = env.RUN_ROOT || "";
   const runRequest = JSON.stringify({ request_id: requestId, target: "github-hosted", entrypoint, workspace_root: runRoot, requested_at: new Date().toISOString() }, null, 2) + "\n";
   const result = await putContent(env, requestPath, runRequest, `notion ide: run ${requestId}`, currentSha);
   return json({ request_id: requestId, commit_sha: result.commit.sha, branch: env.WORKSPACE_BRANCH, entrypoint, run_root: runRoot });
