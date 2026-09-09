@@ -63,10 +63,37 @@ jobs:
         shell: bash
         run: |
           ENTRYPOINT='${{ steps.request.outputs.entrypoint }}'
-          if [[ "$ENTRYPOINT" == *.py ]]; then
-            python "$ENTRYPOINT"
-          else
+          if [[ "$ENTRYPOINT" != *.py ]]; then
+            echo "+ python -m $ENTRYPOINT"
             python -m "$ENTRYPOINT"
+            exit $?
+          fi
+
+          MODULE="${ENTRYPOINT%.py}"
+          MODULE="${MODULE//\//.}"
+          PACKAGE_DIR="$(dirname "$ENTRYPOINT")"
+          IS_PACKAGE=true
+
+          if [[ "$PACKAGE_DIR" == "." ]]; then
+            IS_PACKAGE=false
+          else
+            CURRENT=""
+            IFS='/' read -ra PARTS <<< "$PACKAGE_DIR"
+            for PART in "${PARTS[@]}"; do
+              CURRENT="${CURRENT:+$CURRENT/}$PART"
+              if [[ ! -f "$CURRENT/__init__.py" ]]; then
+                IS_PACKAGE=false
+                break
+              fi
+            done
+          fi
+
+          if [[ "$IS_PACKAGE" == true ]]; then
+            echo "+ python -m $MODULE"
+            python -m "$MODULE"
+          else
+            echo "+ python $ENTRYPOINT"
+            python "$ENTRYPOINT"
           fi
 
       - name: Upload outputs
