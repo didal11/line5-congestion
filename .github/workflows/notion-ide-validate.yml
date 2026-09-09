@@ -1,0 +1,38 @@
+name: Validate Notion IDE
+
+# Validates the embeddable Worker before merging changes.
+on:
+  push:
+    branches:
+      - feat/notion-github-ide
+    paths:
+      - notion-ide/worker/**
+      - .github/workflows/notion-ide-*.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check JavaScript syntax
+        run: node --check notion-ide/worker/src/index.js
+
+      - name: Install Wrangler
+        working-directory: notion-ide/worker
+        run: npm install --no-audit --no-fund
+
+      - name: Build Worker
+        working-directory: notion-ide/worker
+        run: npx wrangler deploy --dry-run

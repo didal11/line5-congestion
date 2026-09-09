@@ -1,23 +1,4 @@
-# 5호선 열차별 혼잡도 추정
-
-현재 프로젝트는 종로3가 → 화곡의 시간표 기반 혼잡도 추정으로 전환했습니다.
-새 코드는 `subway/`, 상세 개발·평가 계획은 [PROJECT_PLAN.md](PROJECT_PLAN.md)에 있습니다.
-기존 예제 전체 사본은 `reference/rps/`에 보관했습니다. 아래 내용은 기존 예제 설명입니다.
-
-현재 프로젝트 구성·설계·상태 확인과 공식 원본 10개 수집을 완료했습니다. 분석 범위는 2024년 이후이며 혼잡도 9개 기준일과 열차 시간표 1개는 `data/raw/`에 있습니다. 출처·누락 기간·형식 차이는 [data/README.md](data/README.md)에 기록했습니다. 데이터 결합과 학습 모델은 아직 구현 전입니다.
-`run.bat`을 더블클릭하거나 다음 명령을 사용합니다. 전역 Python 3.12를 사용하며 가상환경을 생성하지 않습니다.
-
-```powershell
-.\run.bat status
-.\run.bat plan
-.\run.bat check
-```
-
-새 실행 메뉴는 상태·계획·패키지 확인을 제공합니다. 아래의 예전 학습 메뉴 설명은 보관된 예제에 관한 설명입니다.
-
----
-
-# 기존 Python / AI 교육 예제
+# Python / AI 교육 예제
 
 Python으로 CNN을 직접 구성하고 학습한 뒤, 학습된 모델을 LiteRT(TFLite)로 변환하고 추론 성능을 비교하는 학습 프로젝트입니다.
 
@@ -62,8 +43,6 @@ Windows의 전역 Python 3.12 환경을 사용합니다. 프로젝트 폴더에�
 ```powershell
 python -m pip install --upgrade -r requirements.txt
 ```
-
-Windows에서는 `run.bat`을 더블클릭하면 환경 확인, 학습, 평가, LiteRT 변환, 벤치마크, 이미지 추론을 메뉴에서 선택할 수 있습니다.
 
 직접 명령을 실행하려면 다음과 같이 사용합니다.
 
