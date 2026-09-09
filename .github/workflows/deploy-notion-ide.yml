@@ -62,4 +62,21 @@ jobs:
             https://line5-notion-ide.alstn101059.workers.dev/ > /tmp/notion-ide.html
           test -s /tmp/notion-ide.html
 
+      - name: Smoke test explorer API
+        shell: bash
+        env:
+          NOTION_IDE_KEY: ${{ secrets.NOTION_IDE_KEY }}
+        run: |
+          BASE='https://line5-notion-ide.alstn101059.workers.dev'
+          curl --fail --show-error --silent \
+            -H "x-ide-key: $NOTION_IDE_KEY" \
+            -X POST "$BASE/api/bootstrap" > /tmp/bootstrap.json
+          curl --fail --show-error --silent \
+            -H "x-ide-key: $NOTION_IDE_KEY" \
+            "$BASE/api/list?path=" > /tmp/root.json
+          COUNT="$(jq '.items | length' /tmp/root.json)"
+          echo "Explorer root item count: $COUNT"
+          jq -r '.items[].name' /tmp/root.json
+          test "$COUNT" -gt 0
+
       # Preview deploys from this feature branch are intentional until merge.
