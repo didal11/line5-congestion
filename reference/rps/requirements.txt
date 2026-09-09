@@ -1,7 +1,0 @@
-tensorflow>=2.21,<2.22
-keras>=3.12,<4
-tf-keras>=2.21,<2.22
-tensorflow-datasets>=4.9
-tensorflow-model-optimization>=0.8.1
-ai-edge-litert>=2.2,<3
-numpy>=1.26
