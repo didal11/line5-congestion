@@ -27,21 +27,6 @@ jobs:
           LIVE_LOG_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
-
-          curl --fail --show-error --silent \
-            -H "x-ide-key: $LIVE_LOG_KEY" \
-            -H "content-type: application/json" \
-            -X POST \
-            --data "{\"run_id\":\"$LIVE_LOG_RUN_ID\",\"text\":\"CURL_POST_OK\\n\",\"done\":false}" \
-            "$LIVE_LOG_URL" > /tmp/post.json
-          cat /tmp/post.json
-
-          curl --fail --show-error --silent \
-            -H "x-ide-key: $LIVE_LOG_KEY" \
-            "$LIVE_LOG_URL?run_id=$LIVE_LOG_RUN_ID" > /tmp/curl-get.json
-          cat /tmp/curl-get.json
-          jq -e '.tail | contains("CURL_POST_OK")' /tmp/curl-get.json >/dev/null
-
           python notion-ide/live_log_exec.py notion-ide/live_log_probe.py &
           PROBE_PID=$!
 
@@ -50,5 +35,18 @@ jobs:
             -H "x-ide-key: $LIVE_LOG_KEY" \
             "$LIVE_LOG_URL?run_id=$LIVE_LOG_RUN_ID" > /tmp/live-mid.json
           cat /tmp/live-mid.json
+          jq -e '.tail | contains("LIVE_BATCH_PROBE 0")' /tmp/live-mid.json >/dev/null
+          jq -e '.tail | contains("LIVE_BATCH_PROBE 5")' /tmp/live-mid.json >/dev/null
+          jq -e '.seq >= 1' /tmp/live-mid.json >/dev/null
+          jq -e '.done == false' /tmp/live-mid.json >/dev/null
 
           wait "$PROBE_PID"
+
+          curl --fail --show-error --silent \
+            -H "x-ide-key: $LIVE_LOG_KEY" \
+            "$LIVE_LOG_URL?run_id=$LIVE_LOG_RUN_ID" > /tmp/live-final.json
+          cat /tmp/live-final.json
+          jq -e '.tail | contains("LIVE_BATCH_PROBE 14")' /tmp/live-final.json >/dev/null
+          jq -e '.seq >= 3' /tmp/live-final.json >/dev/null
+          jq -e '.done == true' /tmp/live-final.json >/dev/null
+          jq -e '.exit_code == 0' /tmp/live-final.json >/dev/null
