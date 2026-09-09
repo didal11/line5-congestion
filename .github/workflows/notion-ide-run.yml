@@ -79,41 +79,13 @@ jobs:
 
       - name: Run Python
         shell: bash
+        env:
+          ENTRYPOINT: ${{ steps.request.outputs.entrypoint }}
+          LIVE_LOG_URL: https://line5-notion-ide.alstn101059.workers.dev/api/live-log
+          LIVE_LOG_KEY: ${{ secrets.NOTION_IDE_KEY }}
+          LIVE_LOG_RUN_ID: ${{ github.run_id }}
         run: |
-          PYTHON='.venv/bin/python'
-          ENTRYPOINT='${{ steps.request.outputs.entrypoint }}'
-          if [[ "$ENTRYPOINT" != *.py ]]; then
-            echo "+ $PYTHON -m $ENTRYPOINT"
-            "$PYTHON" -m "$ENTRYPOINT"
-            exit $?
-          fi
-
-          MODULE="${ENTRYPOINT%.py}"
-          MODULE="${MODULE//\//.}"
-          PACKAGE_DIR="$(dirname "$ENTRYPOINT")"
-          IS_PACKAGE=true
-
-          if [[ "$PACKAGE_DIR" == "." ]]; then
-            IS_PACKAGE=false
-          else
-            CURRENT=""
-            IFS='/' read -ra PARTS <<< "$PACKAGE_DIR"
-            for PART in "${PARTS[@]}"; do
-              CURRENT="${CURRENT:+$CURRENT/}$PART"
-              if [[ ! -f "$CURRENT/__init__.py" ]]; then
-                IS_PACKAGE=false
-                break
-              fi
-            done
-          fi
-
-          if [[ "$IS_PACKAGE" == true ]]; then
-            echo "+ $PYTHON -m $MODULE"
-            "$PYTHON" -m "$MODULE"
-          else
-            echo "+ $PYTHON $ENTRYPOINT"
-            "$PYTHON" "$ENTRYPOINT"
-          fi
+          .venv/bin/python notion-ide/live_log_exec.py "$ENTRYPOINT"
 
       - name: Upload outputs
         if: always()
