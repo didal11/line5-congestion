@@ -243,16 +243,16 @@ export default {
       if (url.pathname === "/" && request.method === "GET") return new Response(UI, { headers: { "content-type": "text/html; charset=utf-8" } });
       if (!url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
       requireApiKey(request, env);
-      if (url.pathname === "/api/bootstrap" && request.method === "POST") return apiBootstrap(env);
-      if (url.pathname === "/api/list" && request.method === "GET") return apiList(url, env);
-      if (url.pathname === "/api/file" && request.method === "GET") return apiFileGet(url, env);
-      if (url.pathname === "/api/file" && request.method === "PUT") return apiFilePut(request, env);
-      if (url.pathname === "/api/run" && request.method === "POST") return apiRun(request, env);
-      if (url.pathname === "/api/cancel" && request.method === "POST") return apiCancel(request, env);
-      if (url.pathname === "/api/run-status" && request.method === "GET") return apiRunStatus(url, env);
-      if (url.pathname === "/api/artifacts" && request.method === "GET") return apiArtifacts(url, env);
-      if (url.pathname === "/api/artifact" && request.method === "GET") return apiArtifactDownload(url, env);
-      if (url.pathname === "/api/log" && request.method === "GET") return apiJobLog(url, env);
+      if (url.pathname === "/api/bootstrap" && request.method === "POST") return await apiBootstrap(env);
+      if (url.pathname === "/api/list" && request.method === "GET") return await apiList(url, env);
+      if (url.pathname === "/api/file" && request.method === "GET") return await apiFileGet(url, env);
+      if (url.pathname === "/api/file" && request.method === "PUT") return await apiFilePut(request, env);
+      if (url.pathname === "/api/run" && request.method === "POST") return await apiRun(request, env);
+      if (url.pathname === "/api/cancel" && request.method === "POST") return await apiCancel(request, env);
+      if (url.pathname === "/api/run-status" && request.method === "GET") return await apiRunStatus(url, env);
+      if (url.pathname === "/api/artifacts" && request.method === "GET") return await apiArtifacts(url, env);
+      if (url.pathname === "/api/artifact" && request.method === "GET") return await apiArtifactDownload(url, env);
+      if (url.pathname === "/api/log" && request.method === "GET") return await apiJobLog(url, env);
       return json({ error: "Not found" }, 404);
     } catch (error) {
       if (error instanceof HttpError) return json({ error: error.message, details: error.details }, error.status);
