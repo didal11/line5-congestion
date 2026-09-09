@@ -41,13 +41,9 @@ function requireApiKey(request, env) {
   }
 }
 
-function assertWorkspacePath(path, env) {
-  const root = env.WORKSPACE_ROOT.replace(/\/$/, "");
-  if (!path || path.includes("..") || path.startsWith("/")) {
+function assertRepoPath(path, allowRoot = false) {
+  if (path.includes("..") || path.startsWith("/") || (!allowRoot && !path)) {
     throw new HttpError(400, "invalid path");
-  }
-  if (path !== root && !path.startsWith(`${root}/`)) {
-    throw new HttpError(400, `path must stay under ${root}`);
   }
 }
 
@@ -117,7 +113,8 @@ async function ensureWorkspaceBranch(env) {
 
 async function getContent(env, path, branch = env.WORKSPACE_BRANCH) {
   const query = new URLSearchParams({ ref: branch });
-  return github(env, `${repoBase(env)}/contents/${encodePath(path)}?${query}`);
+  const suffix = path ? `/contents/${encodePath(path)}` : "/contents";
+  return github(env, `${repoBase(env)}${suffix}?${query}`);
 }
 
 async function putContent(env, path, content, message, sha = null) {
@@ -132,13 +129,20 @@ async function putContent(env, path, content, message, sha = null) {
 
 async function apiBootstrap(env) {
   const branch = await ensureWorkspaceBranch(env);
-  return json({ owner: env.GITHUB_OWNER, repo: env.GITHUB_REPO, root: env.WORKSPACE_ROOT, branch: env.WORKSPACE_BRANCH, branch_created: branch.created });
+  return json({
+    owner: env.GITHUB_OWNER,
+    repo: env.GITHUB_REPO,
+    root: env.EXPLORER_ROOT || "",
+    run_root: env.RUN_ROOT || "reference/rps",
+    branch: env.WORKSPACE_BRANCH,
+    branch_created: branch.created,
+  });
 }
 
 async function apiList(url, env) {
   await ensureWorkspaceBranch(env);
-  const path = url.searchParams.get("path") || env.WORKSPACE_ROOT;
-  assertWorkspacePath(path, env);
+  const path = url.searchParams.has("path") ? String(url.searchParams.get("path")) : String(env.EXPLORER_ROOT || "");
+  assertRepoPath(path, true);
   const items = await getContent(env, path);
   if (!Array.isArray(items)) throw new HttpError(400, "path is not a directory");
   return json({ path, items: items.map((item) => ({ name: item.name, path: item.path, type: item.type, sha: item.sha, size: item.size })) });
@@ -147,7 +151,7 @@ async function apiList(url, env) {
 async function apiFileGet(url, env) {
   await ensureWorkspaceBranch(env);
   const path = url.searchParams.get("path") || "";
-  assertWorkspacePath(path, env);
+  assertRepoPath(path);
   const file = await getContent(env, path);
   if (Array.isArray(file) || file.type !== "file") throw new HttpError(400, "path is not a file");
   return json({ path: file.path, sha: file.sha, content: base64ToText(file.content || "") });
@@ -157,7 +161,7 @@ async function apiFilePut(request, env) {
   await ensureWorkspaceBranch(env);
   const body = await request.json();
   const path = String(body.path || "");
-  assertWorkspacePath(path, env);
+  assertRepoPath(path);
   const result = await putContent(env, path, String(body.content ?? ""), `notion ide: save ${path}`, body.sha ? String(body.sha) : null);
   return json({ path, sha: result.content.sha, commit_sha: result.commit.sha });
 }
@@ -172,9 +176,10 @@ async function apiRun(request, env) {
   let currentSha = null;
   try { currentSha = (await getContent(env, requestPath)).sha; }
   catch (error) { if (!(error instanceof HttpError) || error.status !== 404) throw error; }
-  const runRequest = JSON.stringify({ request_id: requestId, target: "github-hosted", entrypoint, workspace_root: env.WORKSPACE_ROOT, requested_at: new Date().toISOString() }, null, 2) + "\n";
+  const runRoot = env.RUN_ROOT || "reference/rps";
+  const runRequest = JSON.stringify({ request_id: requestId, target: "github-hosted", entrypoint, workspace_root: runRoot, requested_at: new Date().toISOString() }, null, 2) + "\n";
   const result = await putContent(env, requestPath, runRequest, `notion ide: run ${requestId}`, currentSha);
-  return json({ request_id: requestId, commit_sha: result.commit.sha, branch: env.WORKSPACE_BRANCH, entrypoint });
+  return json({ request_id: requestId, commit_sha: result.commit.sha, branch: env.WORKSPACE_BRANCH, entrypoint, run_root: runRoot });
 }
 
 async function apiRunStatus(url, env) {
