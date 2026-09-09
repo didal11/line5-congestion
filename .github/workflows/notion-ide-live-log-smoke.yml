@@ -1,0 +1,49 @@
+name: Notion IDE Live Log Smoke
+
+on:
+  push:
+    branches:
+      - notion-workspace
+    paths:
+      - .github/workflows/notion-ide-live-log-smoke.yml
+      - notion-ide/live_log_probe.py
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run live log probe
+        shell: bash
+        env:
+          LIVE_LOG_URL: https://line5-notion-ide.alstn101059.workers.dev/api/live-log
+          LIVE_LOG_KEY: ${{ secrets.NOTION_IDE_KEY }}
+          LIVE_LOG_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python notion-ide/live_log_exec.py notion-ide/live_log_probe.py &
+          PROBE_PID=$!
+
+          sleep 7
+          curl --fail --show-error --silent \
+            -H "x-ide-key: $LIVE_LOG_KEY" \
+            "$LIVE_LOG_URL?run_id=$LIVE_LOG_RUN_ID" > /tmp/live-mid.json
+          cat /tmp/live-mid.json
+          jq -e '.tail | contains("LIVE_BATCH_PROBE 0")' /tmp/live-mid.json >/dev/null
+          jq -e '.done == false' /tmp/live-mid.json >/dev/null
+
+          wait "$PROBE_PID"
+
+          curl --fail --show-error --silent \
+            -H "x-ide-key: $LIVE_LOG_KEY" \
+            "$LIVE_LOG_URL?run_id=$LIVE_LOG_RUN_ID" > /tmp/live-final.json
+          cat /tmp/live-final.json
+          jq -e '.tail | contains("LIVE_BATCH_PROBE 14")' /tmp/live-final.json >/dev/null
+          jq -e '.done == true' /tmp/live-final.json >/dev/null
+          jq -e '.exit_code == 0' /tmp/live-final.json >/dev/null
