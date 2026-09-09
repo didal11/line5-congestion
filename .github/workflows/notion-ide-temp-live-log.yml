@@ -1,0 +1,50 @@
+name: Temporary Notion IDE Live Log Patch
+
+on:
+  push:
+    branches:
+      - feat/ide-editor-ui
+    paths:
+      - .github/scripts/patch_notion_ide_live_log_ui.py
+      - .github/workflows/notion-ide-temp-live-log.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply patch
+        run: python .github/scripts/patch_notion_ide_live_log_ui.py
+
+      - name: Check browser JavaScript syntax
+        shell: bash
+        run: |
+          node --check notion-ide/worker/src/ui.js
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('notion-ide/worker/src/ui.js').read_text(encoding='utf-8')
+          start = source.index('<script>') + len('<script>')
+          end = source.index('</script>', start)
+          Path('/tmp/notion-ide-browser.js').write_text(source[start:end], encoding='utf-8')
+          PY
+          node --check /tmp/notion-ide-browser.js
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add notion-ide/worker/src/ui.js
+          if git diff --cached --quiet; then
+            echo 'No UI changes to commit.'
+            exit 0
+          fi
+          git commit -m 'show live runner output in terminal'
+          git push
