@@ -2,6 +2,12 @@ name: Deploy Notion IDE
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/notion-github-ide
+    paths:
+      - notion-ide/worker/**
+      - .github/workflows/deploy-notion-ide.yml
 
 permissions:
   contents: read
