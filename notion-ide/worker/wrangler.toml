@@ -1,5 +1,5 @@
 name = "line5-notion-ide"
-main = "src/index.js"
+main = "src/app.js"
 compatibility_date = "2026-09-01"
 
 [vars]
