@@ -5,3 +5,4 @@ tensorflow-datasets>=4.9
 tensorflow-model-optimization>=0.8.1
 ai-edge-litert>=2.2,<3
 numpy>=1.26
+importlib-resources>=6.4
