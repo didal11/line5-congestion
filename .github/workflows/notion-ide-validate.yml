@@ -1,5 +1,6 @@
 name: Validate Notion IDE
 
+# Validates the embeddable Worker before merging changes.
 on:
   push:
     branches:
