@@ -67,16 +67,27 @@ jobs:
         env:
           NOTION_IDE_KEY: ${{ secrets.NOTION_IDE_KEY }}
         run: |
+          set -euo pipefail
           BASE='https://line5-notion-ide.alstn101059.workers.dev'
-          curl --fail --show-error --silent \
+          BOOT_STATUS="$(curl --show-error --silent \
             -H "x-ide-key: $NOTION_IDE_KEY" \
-            -X POST "$BASE/api/bootstrap" > /tmp/bootstrap.json
-          curl --fail --show-error --silent \
+            -X POST -o /tmp/bootstrap.json -w '%{http_code}' \
+            "$BASE/api/bootstrap")"
+          echo "Bootstrap HTTP: $BOOT_STATUS"
+          cat /tmp/bootstrap.json
+          echo
+          test "$BOOT_STATUS" = "200"
+
+          LIST_STATUS="$(curl --show-error --silent \
             -H "x-ide-key: $NOTION_IDE_KEY" \
-            "$BASE/api/list?path=" > /tmp/root.json
+            -o /tmp/root.json -w '%{http_code}' \
+            "$BASE/api/list?path=")"
+          echo "Explorer list HTTP: $LIST_STATUS"
+          cat /tmp/root.json
+          echo
+          test "$LIST_STATUS" = "200"
           COUNT="$(jq '.items | length' /tmp/root.json)"
           echo "Explorer root item count: $COUNT"
-          jq -r '.items[].name' /tmp/root.json
           test "$COUNT" -gt 0
 
       # Preview deploys from this feature branch are intentional until merge.
