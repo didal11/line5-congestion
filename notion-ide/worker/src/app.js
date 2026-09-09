@@ -182,6 +182,21 @@ async function apiRun(request, env) {
   return json({ request_id: requestId, commit_sha: result.commit.sha, branch: env.WORKSPACE_BRANCH, entrypoint, run_root: runRoot });
 }
 
+async function apiCancel(request, env) {
+  await ensureWorkspaceBranch(env);
+  const body = await request.json();
+  const runId = String(body.run_id || "");
+  if (!/^\d+$/.test(runId)) throw new HttpError(400, "invalid run id");
+  const requestId = crypto.randomUUID();
+  const requestPath = "notion-ide/cancel-request.json";
+  let currentSha = null;
+  try { currentSha = (await getContent(env, requestPath)).sha; }
+  catch (error) { if (!(error instanceof HttpError) || error.status !== 404) throw error; }
+  const cancelRequest = JSON.stringify({ request_id: requestId, run_id: Number(runId), requested_at: new Date().toISOString() }, null, 2) + "\n";
+  const result = await putContent(env, requestPath, cancelRequest, `notion ide: cancel run ${runId}`, currentSha);
+  return json({ request_id: requestId, run_id: Number(runId), commit_sha: result.commit.sha });
+}
+
 async function apiRunStatus(url, env) {
   const sha = url.searchParams.get("sha") || "";
   if (!/^[0-9a-f]{40}$/i.test(sha)) throw new HttpError(400, "invalid commit sha");
@@ -233,6 +248,7 @@ export default {
       if (url.pathname === "/api/file" && request.method === "GET") return apiFileGet(url, env);
       if (url.pathname === "/api/file" && request.method === "PUT") return apiFilePut(request, env);
       if (url.pathname === "/api/run" && request.method === "POST") return apiRun(request, env);
+      if (url.pathname === "/api/cancel" && request.method === "POST") return apiCancel(request, env);
       if (url.pathname === "/api/run-status" && request.method === "GET") return apiRunStatus(url, env);
       if (url.pathname === "/api/artifacts" && request.method === "GET") return apiArtifacts(url, env);
       if (url.pathname === "/api/artifact" && request.method === "GET") return apiArtifactDownload(url, env);
