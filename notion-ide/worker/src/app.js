@@ -1,4 +1,7 @@
 import { UI } from "./ui.js";
+import { LiveLogDurableObject } from "./live-log.js";
+
+export { LiveLogDurableObject };
 
 const API_VERSION = "2022-11-28";
 
@@ -233,6 +236,36 @@ async function apiJobLog(url, env) {
   return new Response(response.body, { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
+function liveLogStub(env, runId) {
+  if (!env.LIVE_LOGS) throw new HttpError(503, "live log storage is not configured");
+  const id = env.LIVE_LOGS.idFromName(runId);
+  return env.LIVE_LOGS.get(id);
+}
+
+async function apiLiveLogPost(request, env) {
+  const body = await request.json();
+  const runId = String(body.run_id || "");
+  if (!/^\d+$/.test(runId)) throw new HttpError(400, "invalid run id");
+  const text = String(body.text || "");
+  if (text.length > 300000) throw new HttpError(413, "live log batch too large");
+  const payload = {
+    text,
+    done: body.done === true,
+    exit_code: body.exit_code == null ? null : Number(body.exit_code),
+  };
+  return liveLogStub(env, runId).fetch("https://live-log/append", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+async function apiLiveLogGet(url, env) {
+  const runId = String(url.searchParams.get("run_id") || "");
+  if (!/^\d+$/.test(runId)) throw new HttpError(400, "invalid run id");
+  return liveLogStub(env, runId).fetch("https://live-log/read");
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -250,6 +283,8 @@ export default {
       if (url.pathname === "/api/run" && request.method === "POST") return await apiRun(request, env);
       if (url.pathname === "/api/cancel" && request.method === "POST") return await apiCancel(request, env);
       if (url.pathname === "/api/run-status" && request.method === "GET") return await apiRunStatus(url, env);
+      if (url.pathname === "/api/live-log" && request.method === "POST") return await apiLiveLogPost(request, env);
+      if (url.pathname === "/api/live-log" && request.method === "GET") return await apiLiveLogGet(url, env);
       if (url.pathname === "/api/artifacts" && request.method === "GET") return await apiArtifacts(url, env);
       if (url.pathname === "/api/artifact" && request.method === "GET") return await apiArtifactDownload(url, env);
       if (url.pathname === "/api/log" && request.method === "GET") return await apiJobLog(url, env);
