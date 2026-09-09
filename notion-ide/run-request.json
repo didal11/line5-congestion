@@ -1,7 +1,7 @@
 {
-  "request_id": "339535d5-2905-4177-8383-f066e8e1ea2d",
+  "request_id": "a9ff857e-8328-4af8-b703-f5ed4b926add",
   "target": "github-hosted",
-  "entrypoint": "src/config.py",
+  "entrypoint": "src/benchmark.py",
   "workspace_root": "",
-  "requested_at": "2026-09-09T11:14:42.381Z"
+  "requested_at": "2026-09-09T11:17:04.767Z"
 }
