@@ -1,10 +1,10 @@
 name: Validate Notion IDE
 
-# Validates the embeddable Worker before merging changes.
+# Validates the embeddable Worker on main.
 on:
   push:
     branches:
-      - feat/notion-github-ide
+      - main
     paths:
       - notion-ide/worker/**
       - .github/workflows/notion-ide-*.yml
