@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - feat/notion-github-ide
+      - main
     paths:
       - notion-ide/worker/**
       - .github/workflows/deploy-notion-ide.yml
@@ -77,6 +77,7 @@ jobs:
           cat /tmp/bootstrap.json
           echo
           test "$BOOT_STATUS" = "200"
+          jq -e '.run_root == ""' /tmp/bootstrap.json >/dev/null
 
           LIST_STATUS="$(curl --show-error --silent \
             -H "x-ide-key: $NOTION_IDE_KEY" \
@@ -89,5 +90,5 @@ jobs:
           COUNT="$(jq '.items | length' /tmp/root.json)"
           echo "Explorer root item count: $COUNT"
           test "$COUNT" -gt 0
-
-      # Preview deploys from this feature branch are intentional until merge.
+          jq -e '.items | any(.name == "src")' /tmp/root.json >/dev/null
+          jq -e '.items | all(.name != "reference")' /tmp/root.json >/dev/null
