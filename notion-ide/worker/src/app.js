@@ -1,4 +1,7 @@
 import { UI } from "./ui.js";
+import { LiveLogDurableObject } from "./live-log.js";
+
+export { LiveLogDurableObject };
 
 const API_VERSION = "2022-11-28";
 
@@ -182,6 +185,21 @@ async function apiRun(request, env) {
   return json({ request_id: requestId, commit_sha: result.commit.sha, branch: env.WORKSPACE_BRANCH, entrypoint, run_root: runRoot });
 }
 
+async function apiCancel(request, env) {
+  await ensureWorkspaceBranch(env);
+  const body = await request.json();
+  const runId = String(body.run_id || "");
+  if (!/^\d+$/.test(runId)) throw new HttpError(400, "invalid run id");
+  const requestId = crypto.randomUUID();
+  const requestPath = "notion-ide/cancel-request.json";
+  let currentSha = null;
+  try { currentSha = (await getContent(env, requestPath)).sha; }
+  catch (error) { if (!(error instanceof HttpError) || error.status !== 404) throw error; }
+  const cancelRequest = JSON.stringify({ request_id: requestId, run_id: Number(runId), requested_at: new Date().toISOString() }, null, 2) + "\n";
+  const result = await putContent(env, requestPath, cancelRequest, `notion ide: cancel run ${runId}`, currentSha);
+  return json({ request_id: requestId, run_id: Number(runId), commit_sha: result.commit.sha });
+}
+
 async function apiRunStatus(url, env) {
   const sha = url.searchParams.get("sha") || "";
   if (!/^[0-9a-f]{40}$/i.test(sha)) throw new HttpError(400, "invalid commit sha");
@@ -218,22 +236,58 @@ async function apiJobLog(url, env) {
   return new Response(response.body, { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
+function liveLogStub(env, runId) {
+  if (!env.LIVE_LOGS) throw new HttpError(503, "live log storage is not configured");
+  const id = env.LIVE_LOGS.idFromName(runId);
+  return env.LIVE_LOGS.get(id);
+}
+
+async function apiLiveLogPost(request, env) {
+  const body = await request.json();
+  const runId = String(body.run_id || "");
+  if (!/^\d+$/.test(runId)) throw new HttpError(400, "invalid run id");
+  const text = String(body.text || "");
+  if (text.length > 300000) throw new HttpError(413, "live log batch too large");
+  const payload = {
+    text,
+    done: body.done === true,
+    exit_code: body.exit_code == null ? null : Number(body.exit_code),
+  };
+  return liveLogStub(env, runId).fetch("https://live-log/append", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+async function apiLiveLogGet(url, env) {
+  const runId = String(url.searchParams.get("run_id") || "");
+  if (!/^\d+$/.test(runId)) throw new HttpError(400, "invalid run id");
+  return liveLogStub(env, runId).fetch("https://live-log/read");
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
+      if (url.pathname.startsWith("/fonts/") && request.method === "GET" && env.ASSETS) {
+        return env.ASSETS.fetch(request);
+      }
       if (url.pathname === "/" && request.method === "GET") return new Response(UI, { headers: { "content-type": "text/html; charset=utf-8" } });
       if (!url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
       requireApiKey(request, env);
-      if (url.pathname === "/api/bootstrap" && request.method === "POST") return apiBootstrap(env);
-      if (url.pathname === "/api/list" && request.method === "GET") return apiList(url, env);
-      if (url.pathname === "/api/file" && request.method === "GET") return apiFileGet(url, env);
-      if (url.pathname === "/api/file" && request.method === "PUT") return apiFilePut(request, env);
-      if (url.pathname === "/api/run" && request.method === "POST") return apiRun(request, env);
-      if (url.pathname === "/api/run-status" && request.method === "GET") return apiRunStatus(url, env);
-      if (url.pathname === "/api/artifacts" && request.method === "GET") return apiArtifacts(url, env);
-      if (url.pathname === "/api/artifact" && request.method === "GET") return apiArtifactDownload(url, env);
-      if (url.pathname === "/api/log" && request.method === "GET") return apiJobLog(url, env);
+      if (url.pathname === "/api/bootstrap" && request.method === "POST") return await apiBootstrap(env);
+      if (url.pathname === "/api/list" && request.method === "GET") return await apiList(url, env);
+      if (url.pathname === "/api/file" && request.method === "GET") return await apiFileGet(url, env);
+      if (url.pathname === "/api/file" && request.method === "PUT") return await apiFilePut(request, env);
+      if (url.pathname === "/api/run" && request.method === "POST") return await apiRun(request, env);
+      if (url.pathname === "/api/cancel" && request.method === "POST") return await apiCancel(request, env);
+      if (url.pathname === "/api/run-status" && request.method === "GET") return await apiRunStatus(url, env);
+      if (url.pathname === "/api/live-log" && request.method === "POST") return await apiLiveLogPost(request, env);
+      if (url.pathname === "/api/live-log" && request.method === "GET") return await apiLiveLogGet(url, env);
+      if (url.pathname === "/api/artifacts" && request.method === "GET") return await apiArtifacts(url, env);
+      if (url.pathname === "/api/artifact" && request.method === "GET") return await apiArtifactDownload(url, env);
+      if (url.pathname === "/api/log" && request.method === "GET") return await apiJobLog(url, env);
       return json({ error: "Not found" }, 404);
     } catch (error) {
       if (error instanceof HttpError) return json({ error: error.message, details: error.details }, error.status);

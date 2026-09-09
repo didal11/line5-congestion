@@ -2,6 +2,19 @@ name = "line5-notion-ide"
 main = "src/app.js"
 compatibility_date = "2026-09-01"
 
+# Static editor assets are bundled with the Worker deployment.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[durable_objects.bindings]]
+name = "LIVE_LOGS"
+class_name = "LiveLogDurableObject"
+
+[[migrations]]
+tag = "v1-live-logs"
+new_sqlite_classes = ["LiveLogDurableObject"]
+
 [vars]
 GITHUB_OWNER = "didal11"
 GITHUB_REPO = "line5-congestion"
