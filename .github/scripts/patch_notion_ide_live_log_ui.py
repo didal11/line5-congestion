@@ -24,7 +24,7 @@ text = text.replace(marker, marker + insert)
 
 pattern = r'async function pollRun\(\)\{.*?\}\nasync function cancelRun'
 replacement = '''async function pollRun(){if(!runCommit)return;try{const d=await api("/api/run-status?sha="+encodeURIComponent(runCommit));if(!d.found){setRunState("WAITING_FOR_RUN");persistRunSession();setTerminal("$ "+lastRunCommand+"\\n\\nSTATE: WAITING_FOR_RUN\\nRequest commit: "+runCommit.slice(0,8)+"\\nGitHub Actions has not created the run yet.");updateRunButton();pollTimer=setTimeout(pollRun,3000);return}runId=d.run.id;jobId=d.jobs[0]?.id||null;persistRunSession();const actual=lifecycleFromRun(d.run);const state=cancelRequested&&d.run.status!=="completed"?"CANCEL_REQUESTED · "+actual:actual;setRunState(state);$("runLink").innerHTML="<a target='_blank' rel='noreferrer' href='"+d.run.html_url+"'>run "+d.run.id+"</a>";const steps=terminalSteps(d);await refreshLiveLog(d.run.status==="completed");renderRunTerminal(state,d.run,steps);updateRunButton();if(d.run.status!=="completed"){pollTimer=setTimeout(pollRun,3000)}else{$("cancelRun").disabled=true;$("loadLog").disabled=!jobId;await loadArtifacts();if(jobId)await loadLog();clearRunSession();updateRunButton()}}catch(e){setRunState("IDE_ERROR");appendTerminal("[IDE ERROR] "+friendlyError(e)+"\\n[RETRYING] status check in 7 seconds");updateRunButton();pollTimer=setTimeout(pollRun,7000)}}\nasync function cancelRun'''
-text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+text, count = re.subn(pattern, lambda _: replacement, text, count=1, flags=re.S)
 if count != 1:
     raise SystemExit(f'pollRun replacement count={count}')
 
