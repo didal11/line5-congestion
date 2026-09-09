@@ -1,0 +1,82 @@
+name: Notion IDE Run
+
+on:
+  push:
+    branches:
+      - notion-workspace
+    paths:
+      - notion-ide/run-request.json
+  workflow_dispatch:
+    inputs:
+      entrypoint:
+        description: Python module or relative .py path under reference/rps
+        required: true
+        default: src.train
+
+permissions:
+  contents: read
+
+jobs:
+  run-python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: reference/rps/requirements.txt
+
+      - name: Resolve entrypoint
+        id: request
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ENTRYPOINT='${{ inputs.entrypoint }}'
+          else
+            ENTRYPOINT="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('notion-ide/run-request.json').read_text(encoding='utf-8'))
+          print(data['entrypoint'])
+          PY
+          )"
+          fi
+          python - "$ENTRYPOINT" <<'PY'
+          import re
+          import sys
+          value = sys.argv[1]
+          if not value or '..' in value or not re.fullmatch(r'[A-Za-z0-9_./-]+', value):
+              raise SystemExit(f'invalid entrypoint: {value!r}')
+          PY
+          echo "entrypoint=$ENTRYPOINT" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade -r reference/rps/requirements.txt
+
+      - name: Run Python
+        shell: bash
+        working-directory: reference/rps
+        run: |
+          ENTRYPOINT='${{ steps.request.outputs.entrypoint }}'
+          if [[ "$ENTRYPOINT" == *.py ]]; then
+            python "$ENTRYPOINT"
+          else
+            python -m "$ENTRYPOINT"
+          fi
+
+      - name: Upload outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notion-ide-result-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            reference/rps/models/**
+            reference/rps/results/**
