@@ -2,7 +2,7 @@ name = "line5-notion-ide"
 main = "src/app.js"
 compatibility_date = "2026-09-01"
 
-# The embedded IDE serves its bundled editor font from static assets.
+# Static editor assets are bundled with the Worker deployment.
 [assets]
 directory = "./public"
 binding = "ASSETS"
