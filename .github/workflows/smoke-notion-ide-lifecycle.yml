@@ -1,0 +1,93 @@
+name: Smoke Notion IDE Lifecycle
+
+on:
+  push:
+    branches:
+      - feat/ide-editor-ui
+    paths:
+      - .github/workflows/smoke-notion-ide-lifecycle.yml
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Exercise run status and cancellation
+        shell: bash
+        env:
+          NOTION_IDE_KEY: ${{ secrets.NOTION_IDE_KEY }}
+        run: |
+          set -euo pipefail
+          BASE='https://line5-notion-ide.alstn101059.workers.dev'
+
+          RUN_HTTP="$(curl --show-error --silent \
+            -H "x-ide-key: $NOTION_IDE_KEY" \
+            -H 'content-type: application/json' \
+            -X POST \
+            -d '{"entrypoint":"src/config.py"}' \
+            -o /tmp/run.json -w '%{http_code}' \
+            "$BASE/api/run")"
+          echo "Run request HTTP: $RUN_HTTP"
+          cat /tmp/run.json
+          echo
+          test "$RUN_HTTP" = "200"
+          COMMIT_SHA="$(jq -r '.commit_sha' /tmp/run.json)"
+          test "${#COMMIT_SHA}" = "40"
+
+          FOUND=false
+          RUN_ID=''
+          for i in $(seq 1 40); do
+            STATUS_HTTP="$(curl --show-error --silent \
+              -H "x-ide-key: $NOTION_IDE_KEY" \
+              -o /tmp/status.json -w '%{http_code}' \
+              "$BASE/api/run-status?sha=$COMMIT_SHA")"
+            test "$STATUS_HTTP" = "200"
+            FOUND="$(jq -r '.found' /tmp/status.json)"
+            if [[ "$FOUND" == 'true' ]]; then
+              RUN_ID="$(jq -r '.run.id' /tmp/status.json)"
+              echo "Run found: $RUN_ID"
+              echo "GitHub status: $(jq -r '.run.status' /tmp/status.json)"
+              jq -r '.jobs[]? | "job \(.name): \(.status) / \(.conclusion // "-")", (.steps[]? | "  step \(.number) \(.name): \(.status) / \(.conclusion // "-")")' /tmp/status.json
+              break
+            fi
+            echo "WAITING_FOR_RUN attempt $i"
+            sleep 3
+          done
+          test "$FOUND" = 'true'
+          test -n "$RUN_ID"
+
+          CANCEL_HTTP="$(curl --show-error --silent \
+            -H "x-ide-key: $NOTION_IDE_KEY" \
+            -H 'content-type: application/json' \
+            -X POST \
+            -d "{\"run_id\":$RUN_ID}" \
+            -o /tmp/cancel.json -w '%{http_code}' \
+            "$BASE/api/cancel")"
+          echo "Cancel request HTTP: $CANCEL_HTTP"
+          cat /tmp/cancel.json
+          echo
+          test "$CANCEL_HTTP" = "200"
+
+          FINAL=''
+          for i in $(seq 1 60); do
+            curl --fail --show-error --silent \
+              -H "x-ide-key: $NOTION_IDE_KEY" \
+              "$BASE/api/run-status?sha=$COMMIT_SHA" > /tmp/final.json
+            STATUS="$(jq -r '.run.status // "waiting"' /tmp/final.json)"
+            CONCLUSION="$(jq -r '.run.conclusion // ""' /tmp/final.json)"
+            echo "after cancel $i: $STATUS ${CONCLUSION:-}"
+            if [[ "$STATUS" == 'completed' ]]; then
+              FINAL="$CONCLUSION"
+              break
+            fi
+            sleep 3
+          done
+          test -n "$FINAL"
+          echo "Final conclusion: $FINAL"
+          if [[ "$FINAL" != 'cancelled' && "$FINAL" != 'success' ]]; then
+            echo "Unexpected final conclusion: $FINAL"
+            exit 1
+          fi
