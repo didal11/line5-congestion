@@ -1,7 +1,7 @@
 {
-  "request_id": "7c2b4da1-1a2e-46f8-a888-evaluatefix01",
+  "request_id": "live-log-probe-20260909",
   "target": "github-hosted",
-  "entrypoint": "src/evaluate.py",
+  "entrypoint": "notion-ide/live_log_probe.py",
   "workspace_root": "",
-  "requested_at": "2026-09-09T12:10:30Z"
+  "requested_at": "2026-09-09T13:08:00Z"
 }
