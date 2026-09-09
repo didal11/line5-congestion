@@ -1,0 +1,11 @@
+name = "line5-notion-ide"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+GITHUB_OWNER = "didal11"
+GITHUB_REPO = "line5-congestion"
+GITHUB_DEFAULT_BRANCH = "main"
+WORKSPACE_BRANCH = "notion-workspace"
+WORKSPACE_ROOT = "reference/rps"
+RUN_WORKFLOW = "notion-ide-run.yml"
