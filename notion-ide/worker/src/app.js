@@ -291,10 +291,10 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
-      if ((url.pathname.startsWith("/fonts/") || url.pathname === "/ide-productivity.js") && request.method === "GET" && env.ASSETS) {
+      if ((url.pathname.startsWith("/fonts/") || url.pathname === "/ide-productivity.js" || url.pathname === "/notebook-editor.js") && request.method === "GET" && env.ASSETS) {
         return env.ASSETS.fetch(request);
       }
-      if (url.pathname === "/" && request.method === "GET") return new Response(UI.replace("</body>", "<script src=\"/ide-productivity.js\"></script></body>"), { headers: { "content-type": "text/html; charset=utf-8" } });
+      if (url.pathname === "/" && request.method === "GET") return new Response(UI.replace("</body>", "<script src=\"/ide-productivity.js\"></script><script src=\"/notebook-editor.js\"></script></body>"), { headers: { "content-type": "text/html; charset=utf-8" } });
       if (!url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
       requireApiKey(request, env);
       if (url.pathname === "/api/bootstrap" && request.method === "POST") return await apiBootstrap(env);
