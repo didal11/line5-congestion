@@ -1,8 +1,8 @@
 {
-  "request_id": "merge-args-probe-20260910",
+  "request_id": "192d81f4-1f63-48d1-b2df-7bf6f842cfc5",
   "target": "github-hosted",
-  "entrypoint": "notion-ide/args_probe.py",
-  "args": ["hello world", "--flag", "A B"],
+  "entrypoint": "notion-ide/.prod-smoke/queue_probe.py",
+  "args": [],
   "workspace_root": "",
-  "requested_at": "2026-09-10T01:34:00+09:00"
+  "requested_at": "2026-09-10T01:21:55.123Z"
 }
