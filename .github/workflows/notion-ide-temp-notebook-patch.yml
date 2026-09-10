@@ -1,0 +1,42 @@
+name: Temporary Notion Notebook Integration Patch
+
+on:
+  push:
+    branches:
+      - feat/notebook-editor
+    paths:
+      - .github/scripts/patch_notebook_editor.py
+      - .github/workflows/notion-ide-temp-notebook-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply notebook integration patch
+        run: python .github/scripts/patch_notebook_editor.py
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check notion-ide/worker/src/app.js
+          node --check notion-ide/worker/public/notebook-editor.js
+
+      - name: Commit integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add notion-ide/worker/src/app.js
+          if git diff --cached --quiet; then
+            echo 'No integration changes.'
+            exit 0
+          fi
+          git commit -m 'wire notebook editor into Worker UI'
+          git push
