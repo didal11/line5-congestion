@@ -1,0 +1,210 @@
+name: Notion IDE Productivity Pack Smoke
+
+on:
+  push:
+    branches:
+      - feat/ide-productivity-pack
+    paths:
+      - .github/workflows/notion-ide-productivity-smoke.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      BASE: https://line5-notion-ide.alstn101059.workers.dev
+      IDE_KEY: ${{ secrets.NOTION_IDE_KEY }}
+      SMOKE_ROOT: notion-ide/.prod-smoke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify productivity UI asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent "$BASE/" > /tmp/ide.html
+          grep -q 'ide-productivity.js' /tmp/ide.html
+          curl --fail --show-error --silent "$BASE/ide-productivity.js" > /tmp/productivity.js
+          grep -q 'RUN QUEUE' /tmp/productivity.js
+          grep -q 'IDE HISTORY' /tmp/productivity.js
+          grep -q 'Project text' /tmp/productivity.js
+          grep -q 'New Folder' /tmp/productivity.js
+
+      - name: Seed smoke workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/import.json <<'JSON'
+          {
+            "destination": "notion-ide/.prod-smoke",
+            "overwrite": true,
+            "files": [
+              {"path":"needle.txt","content_base64":"UFJPRFVDVElWSVRZX05FRURMRV85OTMzNwo="},
+              {"path":"nested/inside.txt","content_base64":"Zm9sZGVyLWRvd25sb2FkLXByb2JlCg=="},
+              {"path":"queue_probe.py","content_base64":"cHJpbnQoJ1BST0RVQ1RJVklUWV9RVUVVRV9QUk9CRScpCg=="}
+            ]
+          }
+          JSON
+          curl --fail --show-error --silent \
+            -H "x-ide-key: $IDE_KEY" -H 'content-type: application/json' \
+            -X POST --data-binary @/tmp/import.json "$BASE/api/import" | tee /tmp/seed.json
+          jq -e '.ok == true and .count == 3' /tmp/seed.json >/dev/null
+
+      - name: Create and verify empty folder
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent \
+            -H "x-ide-key: $IDE_KEY" -H 'content-type: application/json' \
+            -X POST --data '{"path":"notion-ide/.prod-smoke/empty"}' "$BASE/api/mkdir" | tee /tmp/mkdir.json
+          jq -e '.ok == true' /tmp/mkdir.json >/dev/null
+          curl --fail --show-error --silent -H "x-ide-key: $IDE_KEY" \
+            "$BASE/api/list?path=notion-ide%2F.prod-smoke%2Fempty" | tee /tmp/empty-list.json
+          jq -e '.items | length == 0' /tmp/empty-list.json >/dev/null
+
+      - name: Rename with one move commit
+        id: rename
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/move.json <<'JSON'
+          {"moves":[{"from":"notion-ide/.prod-smoke/needle.txt","to":"notion-ide/.prod-smoke/renamed.txt"}]}
+          JSON
+          curl --fail --show-error --silent \
+            -H "x-ide-key: $IDE_KEY" -H 'content-type: application/json' \
+            -X POST --data-binary @/tmp/move.json "$BASE/api/move" | tee /tmp/move-result.json
+          jq -e '.ok == true and (.commit_sha | length == 40) and (.moves | length == 1)' /tmp/move-result.json >/dev/null
+          echo "sha=$(jq -r .commit_sha /tmp/move-result.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Search workspace name and text
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent -H "x-ide-key: $IDE_KEY" \
+            "$BASE/api/search?mode=name&q=renamed.txt" | tee /tmp/name-search.json
+          jq -e '.results | any(.path == "notion-ide/.prod-smoke/renamed.txt")' /tmp/name-search.json >/dev/null
+          curl --fail --show-error --silent -H "x-ide-key: $IDE_KEY" \
+            "$BASE/api/search?mode=text&q=PRODUCTIVITY_NEEDLE_99337" | tee /tmp/text-search.json
+          jq -e '.results | any(.path == "notion-ide/.prod-smoke/renamed.txt" and .line == 1)' /tmp/text-search.json >/dev/null
+
+      - name: Download file and folder ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent -H "x-ide-key: $IDE_KEY" \
+            "$BASE/api/download?path=notion-ide%2F.prod-smoke%2Frenamed.txt" -o /tmp/renamed.txt
+          grep -qx 'PRODUCTIVITY_NEEDLE_99337' /tmp/renamed.txt
+          curl --fail --show-error --silent -H "x-ide-key: $IDE_KEY" \
+            "$BASE/api/download?path=notion-ide%2F.prod-smoke%2Fnested" -o /tmp/nested.zip
+          test "$(od -An -tx1 -N4 /tmp/nested.zip | tr -d ' \n')" = '504b0304'
+          unzip -p /tmp/nested.zip inside.txt | grep -qx 'folder-download-probe'
+
+      - name: Verify history and safe revert
+        shell: bash
+        env:
+          MOVE_SHA: ${{ steps.rename.outputs.sha }}
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent -H "x-ide-key: $IDE_KEY" \
+            "$BASE/api/history?limit=40" | tee /tmp/history.json
+          jq -e --arg sha "$MOVE_SHA" '.items | any(.sha == $sha)' /tmp/history.json >/dev/null
+          curl --fail --show-error --silent \
+            -H "x-ide-key: $IDE_KEY" -H 'content-type: application/json' \
+            -X POST --data "{\"commit_sha\":\"$MOVE_SHA\"}" "$BASE/api/revert" | tee /tmp/revert.json
+          jq -e '.ok == true and (.paths | index("notion-ide/.prod-smoke/needle.txt")) != null and (.paths | index("notion-ide/.prod-smoke/renamed.txt")) != null' /tmp/revert.json >/dev/null
+          curl --fail --show-error --silent -H "x-ide-key: $IDE_KEY" \
+            "$BASE/api/download?path=notion-ide%2F.prod-smoke%2Fneedle.txt" -o /tmp/reverted.txt
+          grep -qx 'PRODUCTIVITY_NEEDLE_99337' /tmp/reverted.txt
+          HTTP="$(curl --show-error --silent -o /tmp/missing.txt -w '%{http_code}' -H "x-ide-key: $IDE_KEY" \
+            "$BASE/api/download?path=notion-ide%2F.prod-smoke%2Frenamed.txt")"
+          test "$HTTP" = "404"
+
+      - name: Move a folder recursively
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent \
+            -H "x-ide-key: $IDE_KEY" -H 'content-type: application/json' \
+            -X POST --data '{"moves":[{"from":"notion-ide/.prod-smoke/nested","to":"notion-ide/.prod-smoke/moved-nested"}]}' \
+            "$BASE/api/move" | tee /tmp/folder-move.json
+          jq -e '.ok == true' /tmp/folder-move.json >/dev/null
+          curl --fail --show-error --silent -H "x-ide-key: $IDE_KEY" \
+            "$BASE/api/download?path=notion-ide%2F.prod-smoke%2Fmoved-nested" -o /tmp/moved.zip
+          unzip -p /tmp/moved.zip inside.txt | grep -qx 'folder-download-probe'
+
+      - name: Check whether queue smoke is safe
+        id: queue-safe
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent -H "x-ide-key: $IDE_KEY" "$BASE/api/queue" | tee /tmp/queue-before.json
+          ITEM_COUNT="$(jq '.items | length' /tmp/queue-before.json)"
+          ACTIVE_COUNT="$(curl --fail --show-error --silent \
+            -H "Authorization: Bearer ${{ github.token }}" -H 'Accept: application/vnd.github+json' \
+            'https://api.github.com/repos/${{ github.repository }}/actions/workflows/notion-ide-run.yml/runs?branch=notion-workspace&status=in_progress&per_page=10' | jq '.total_count')"
+          if [[ "$ITEM_COUNT" = "0" && "$ACTIVE_COUNT" = "0" ]]; then
+            echo 'safe=true' >> "$GITHUB_OUTPUT"
+          else
+            echo "Queue smoke skipped: queue items=$ITEM_COUNT active runs=$ACTIVE_COUNT"
+            echo 'safe=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify sequential persistent queue
+        if: steps.queue-safe.outputs.safe == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          enqueue() {
+            curl --fail --show-error --silent \
+              -H "x-ide-key: $IDE_KEY" -H 'content-type: application/json' \
+              -X POST --data '{"entrypoint":"notion-ide/.prod-smoke/queue_probe.py","args":[]}' "$BASE/api/queue"
+          }
+          enqueue | tee /tmp/q1.json
+          enqueue | tee /tmp/q2.json
+          ID1="$(jq -r '.item.id' /tmp/q1.json)"
+          ID2="$(jq -r '.item.id' /tmp/q2.json)"
+          test -n "$ID1"; test -n "$ID2"
+          OK=0
+          for attempt in $(seq 1 90); do
+            curl --fail --show-error --silent -H "x-ide-key: $IDE_KEY" "$BASE/api/queue" > /tmp/qstate.json
+            S1="$(jq -r --arg id "$ID1" '.items[] | select(.id==$id) | .status' /tmp/qstate.json)"
+            S2="$(jq -r --arg id "$ID2" '.items[] | select(.id==$id) | .status' /tmp/qstate.json)"
+            echo "queue attempt=$attempt q1=$S1 q2=$S2"
+            if [[ "$S1" = "SUCCESS" && "$S2" = "SUCCESS" ]]; then OK=1; break; fi
+            if [[ "$S1" =~ ^(FAILED|CANCELLED|TIMED_OUT|IDE_ERROR)$ || "$S2" =~ ^(FAILED|CANCELLED|TIMED_OUT|IDE_ERROR)$ ]]; then cat /tmp/qstate.json; exit 1; fi
+            sleep 3
+          done
+          test "$OK" = "1"
+          START2="$(jq -r --arg id "$ID2" '.items[] | select(.id==$id) | .started_at' /tmp/qstate.json)"
+          DONE1="$(jq -r --arg id "$ID1" '.items[] | select(.id==$id) | .completed_at' /tmp/qstate.json)"
+          python - "$DONE1" "$START2" <<'PY'
+          import sys
+          from datetime import datetime
+          a=datetime.fromisoformat(sys.argv[1].replace('Z','+00:00'))
+          b=datetime.fromisoformat(sys.argv[2].replace('Z','+00:00'))
+          assert b >= a, (a,b)
+          PY
+          curl --fail --show-error --silent -H "x-ide-key: $IDE_KEY" -H 'content-type: application/json' -X POST --data '{}' "$BASE/api/queue/clear" >/tmp/qclear.json
+          jq -e '.ok == true' /tmp/qclear.json >/dev/null
+
+      - name: Clean smoke workspace
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin notion-workspace
+          git switch -C notion-workspace origin/notion-workspace
+          if [[ -d "$SMOKE_ROOT" ]]; then
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git rm -r "$SMOKE_ROOT"
+            git commit -m 'remove productivity pack smoke files'
+            git push origin HEAD:notion-workspace
+          fi
