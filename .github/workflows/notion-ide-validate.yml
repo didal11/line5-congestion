@@ -31,6 +31,7 @@ jobs:
           node --check notion-ide/worker/src/index.js
           node --check notion-ide/worker/src/app.js
           node --check notion-ide/worker/src/ui.js
+          node --check notion-ide/worker/src/file-import.js
 
       - name: Check embedded browser script syntax
         shell: bash
