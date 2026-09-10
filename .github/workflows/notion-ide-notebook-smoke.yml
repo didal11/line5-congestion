@@ -1,0 +1,126 @@
+name: Notion IDE Notebook Browser Smoke
+
+on:
+  push:
+    branches:
+      - feat/notebook-editor
+    paths:
+      - .github/workflows/notion-ide-notebook-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE: https://line5-notion-ide.alstn101059.workers.dev
+      IDE_KEY: ${{ secrets.NOTION_IDE_KEY }}
+      NOTEBOOK_PATH: notebook-ui-smoke.ipynb
+    steps:
+      - name: Seed notebook through IDE API
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/import.json
+          import base64, json
+          notebook = {
+              "cells": [
+                  {"cell_type":"markdown","metadata":{},"source":["# Notebook Smoke\n","Rendered markdown"]},
+                  {"cell_type":"code","execution_count":1,"metadata":{},"outputs":[{"output_type":"stream","name":"stdout","text":["hello-output\n"]}],"source":["print('hello')"]},
+                  {"cell_type":"markdown","metadata":{},"source":["**bold text**"]}
+              ],
+              "metadata":{"kernelspec":{"display_name":"Python 3","language":"python","name":"python3"}},
+              "nbformat":4,
+              "nbformat_minor":5
+          }
+          raw=json.dumps(notebook,separators=(",",":"),ensure_ascii=False).encode()
+          print(json.dumps({"destination":"","overwrite":True,"files":[{"path":"notebook-ui-smoke.ipynb","content_base64":base64.b64encode(raw).decode()}]}))
+          PY
+          curl --fail --show-error --silent \
+            -H "x-ide-key: $IDE_KEY" -H 'content-type: application/json' \
+            -X POST --data-binary @/tmp/import.json "$BASE/api/import" | tee /tmp/import-result.json
+          jq -e '.ok == true and .count == 1' /tmp/import-result.json >/dev/null
+
+      - name: Install browser driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          which google-chrome || which chromium || which chromium-browser
+          npm install --no-audit --no-fund playwright-core@1.55.0
+
+      - name: Exercise notebook UI in Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/notebook-smoke.mjs <<'JS'
+          import { chromium } from 'playwright-core';
+          import { execFileSync } from 'node:child_process';
+          const candidates=['google-chrome','chromium','chromium-browser'];
+          let executablePath='';
+          for (const name of candidates) {
+            try { executablePath=execFileSync('which',[name],{encoding:'utf8'}).trim(); if(executablePath)break; } catch {}
+          }
+          if(!executablePath)throw new Error('Chromium executable not found');
+          const browser=await chromium.launch({headless:true,executablePath,args:['--no-sandbox']});
+          const page=await browser.newPage({viewport:{width:1400,height:1000}});
+          await page.goto(process.env.BASE,{waitUntil:'networkidle'});
+          await page.locator('#key').fill(process.env.IDE_KEY);
+          await page.locator('#connect').click();
+          await page.waitForFunction(()=>document.querySelector('#connection')?.textContent==='connected');
+          const row=page.locator(`.tree-row[data-path="${process.env.NOTEBOOK_PATH}"]`);
+          await row.waitFor({state:'visible'});
+          await row.click();
+          await page.locator('#notebookShell:not(.hidden)').waitFor({state:'visible'});
+          if(await page.locator('.nb-cell').count()!==3)throw new Error('expected 3 notebook cells');
+          const rendered=await page.locator('.nb-markdown-render').first().innerText();
+          if(!rendered.includes('Notebook Smoke')||!rendered.includes('Rendered markdown'))throw new Error('markdown did not render');
+          const code=page.locator('.nb-code-editor').first();
+          if((await code.inputValue())!=="print('hello')")throw new Error('code source mismatch');
+          const output=await page.locator('.nb-output').first().innerText();
+          if(!output.includes('hello-output'))throw new Error('stdout output missing');
+          await code.fill("print('changed from notebook ui')");
+          await page.locator('.nb-toolbar button', {hasText:'+ Markdown'}).click();
+          if(await page.locator('.nb-cell').count()!==4)throw new Error('cell append failed');
+          await page.locator('#save').click();
+          await page.waitForFunction(()=>document.querySelector('#saveState')?.textContent?.startsWith('saved '));
+          await page.locator('.nb-toolbar button', {hasText:'Raw JSON'}).click();
+          await page.locator('.nb-raw').waitFor({state:'visible'});
+          const raw=await page.locator('.nb-raw').innerText();
+          const parsed=JSON.parse(raw);
+          if(parsed.nbformat!==4||parsed.cells.length!==4)throw new Error('raw notebook view mismatch');
+          await browser.close();
+          JS
+          BASE="$BASE" IDE_KEY="$IDE_KEY" NOTEBOOK_PATH="$NOTEBOOK_PATH" node /tmp/notebook-smoke.mjs
+
+      - name: Verify saved nbformat round trip
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent -H "x-ide-key: $IDE_KEY" \
+            "$BASE/api/file?path=$NOTEBOOK_PATH" > /tmp/file.json
+          jq -r '.content' /tmp/file.json > /tmp/notebook.ipynb
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/notebook.ipynb',encoding='utf-8'))
+          assert data['nbformat']==4
+          assert len(data['cells'])==4
+          assert data['cells'][0]['cell_type']=='markdown'
+          assert ''.join(data['cells'][1]['source']) == "print('changed from notebook ui')"
+          assert data['cells'][1]['outputs'][0]['text'][0]=='hello-output\n'
+          assert data['cells'][3]['cell_type']=='markdown'
+          print('NOTEBOOK_ROUNDTRIP_OK')
+          PY
+
+      - name: Clean smoke notebook
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATUS="$(curl --show-error --silent -o /tmp/delete.json -w '%{http_code}' \
+            -H "x-ide-key: $IDE_KEY" -H 'content-type: application/json' \
+            -X POST --data "{\"paths\":[\"$NOTEBOOK_PATH\"]}" "$BASE/api/delete")"
+          echo "cleanup HTTP $STATUS"
+          cat /tmp/delete.json || true
+          [[ "$STATUS" = "200" || "$STATUS" = "404" ]]
