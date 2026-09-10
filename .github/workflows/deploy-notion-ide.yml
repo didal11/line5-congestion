@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - feat/ide-productivity-pack
     paths:
       - notion-ide/worker/**
       - .github/workflows/deploy-notion-ide.yml
