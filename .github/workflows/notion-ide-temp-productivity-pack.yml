@@ -41,7 +41,7 @@ jobs:
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add notion-ide/worker/src/app.js notion-ide/worker/wrangler.toml .github/workflows/notion-ide-validate.yml
+          git add notion-ide/worker/src/app.js notion-ide/worker/wrangler.toml
           if git diff --cached --quiet; then
             echo 'No integration changes.'
             exit 0
