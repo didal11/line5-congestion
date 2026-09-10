@@ -15,6 +15,14 @@ class_name = "LiveLogDurableObject"
 tag = "v1-live-logs"
 new_sqlite_classes = ["LiveLogDurableObject"]
 
+[[durable_objects.bindings]]
+name = "RUN_QUEUE"
+class_name = "RunQueueDurableObject"
+
+[[migrations]]
+tag = "v2-run-queue"
+new_sqlite_classes = ["RunQueueDurableObject"]
+
 [vars]
 GITHUB_OWNER = "didal11"
 GITHUB_REPO = "line5-congestion"

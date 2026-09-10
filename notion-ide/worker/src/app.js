@@ -2,8 +2,13 @@ import { UI } from "./ui.js";
 import { LiveLogDurableObject } from "./live-log.js";
 import { apiImportFiles } from "./file-import.js";
 import { apiDeleteFiles } from "./file-delete.js";
+import { apiMakeDirectory, apiMovePaths } from "./file-ops.js";
+import { apiDownload, DownloadError } from "./file-download.js";
+import { apiSearch } from "./search.js";
+import { apiHistory, apiRevertCommit } from "./history.js";
+import { RunQueueDurableObject } from "./run-queue.js";
 
-export { LiveLogDurableObject };
+export { LiveLogDurableObject, RunQueueDurableObject };
 
 const API_VERSION = "2022-11-28";
 
@@ -150,7 +155,7 @@ async function apiList(url, env) {
   assertRepoPath(path, true);
   const items = await getContent(env, path);
   if (!Array.isArray(items)) throw new HttpError(400, "path is not a directory");
-  return json({ path, items: items.map((item) => ({ name: item.name, path: item.path, type: item.type, sha: item.sha, size: item.size })) });
+  return json({ path, items: items.filter((item) => item.name !== ".notion-ide-keep").map((item) => ({ name: item.name, path: item.path, type: item.type, sha: item.sha, size: item.size })) });
 }
 
 async function apiFileGet(url, env) {
@@ -176,13 +181,15 @@ async function apiRun(request, env) {
   const body = await request.json();
   const entrypoint = String(body.entrypoint || "src.train");
   assertEntrypoint(entrypoint);
+  const args = Array.isArray(body.args) ? body.args.map((item) => String(item)) : [];
+  if (args.length > 40 || args.some((item) => item.length > 600) || args.reduce((sum, item) => sum + item.length, 0) > 6000) throw new HttpError(400, "invalid run arguments");
   const requestId = crypto.randomUUID();
   const requestPath = "notion-ide/run-request.json";
   let currentSha = null;
   try { currentSha = (await getContent(env, requestPath)).sha; }
   catch (error) { if (!(error instanceof HttpError) || error.status !== 404) throw error; }
   const runRoot = env.RUN_ROOT || "";
-  const runRequest = JSON.stringify({ request_id: requestId, target: "github-hosted", entrypoint, workspace_root: runRoot, requested_at: new Date().toISOString() }, null, 2) + "\n";
+  const runRequest = JSON.stringify({ request_id: requestId, target: "github-hosted", entrypoint, args, workspace_root: runRoot, requested_at: new Date().toISOString() }, null, 2) + "\n";
   const result = await putContent(env, requestPath, runRequest, `notion ide: run ${requestId}`, currentSha);
   return json({ request_id: requestId, commit_sha: result.commit.sha, branch: env.WORKSPACE_BRANCH, entrypoint, run_root: runRoot });
 }
@@ -268,14 +275,26 @@ async function apiLiveLogGet(url, env) {
   return liveLogStub(env, runId).fetch("https://live-log/read");
 }
 
+function runQueueStub(env) {
+  if (!env.RUN_QUEUE) throw new HttpError(503, "run queue storage is not configured");
+  const id = env.RUN_QUEUE.idFromName(`${env.GITHUB_OWNER}/${env.GITHUB_REPO}:${env.WORKSPACE_BRANCH}`);
+  return env.RUN_QUEUE.get(id);
+}
+
+async function proxyRunQueue(request, env, path) {
+  const init = { method: request.method, headers: { "content-type": "application/json" } };
+  if (request.method !== "GET") init.body = await request.text();
+  return runQueueStub(env).fetch(`https://run-queue${path}`, init);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
-      if (url.pathname.startsWith("/fonts/") && request.method === "GET" && env.ASSETS) {
+      if ((url.pathname.startsWith("/fonts/") || url.pathname === "/ide-productivity.js") && request.method === "GET" && env.ASSETS) {
         return env.ASSETS.fetch(request);
       }
-      if (url.pathname === "/" && request.method === "GET") return new Response(UI, { headers: { "content-type": "text/html; charset=utf-8" } });
+      if (url.pathname === "/" && request.method === "GET") return new Response(UI.replace("</body>", "<script src=\"/ide-productivity.js\"></script></body>"), { headers: { "content-type": "text/html; charset=utf-8" } });
       if (!url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
       requireApiKey(request, env);
       if (url.pathname === "/api/bootstrap" && request.method === "POST") return await apiBootstrap(env);
@@ -284,6 +303,18 @@ export default {
       if (url.pathname === "/api/file" && request.method === "PUT") return await apiFilePut(request, env);
       if (url.pathname === "/api/import" && request.method === "POST") return await apiImportFiles(request, env);
       if (url.pathname === "/api/delete" && request.method === "POST") return await apiDeleteFiles(request, env);
+      if (url.pathname === "/api/mkdir" && request.method === "POST") return await apiMakeDirectory(request, env);
+      if (url.pathname === "/api/move" && request.method === "POST") return await apiMovePaths(request, env);
+      if (url.pathname === "/api/download" && request.method === "GET") return await apiDownload(url, env);
+      if (url.pathname === "/api/search" && request.method === "GET") return await apiSearch(url, env);
+      if (url.pathname === "/api/history" && request.method === "GET") return await apiHistory(url, env);
+      if (url.pathname === "/api/revert" && request.method === "POST") return await apiRevertCommit(request, env);
+      if (url.pathname === "/api/queue" && request.method === "GET") return await proxyRunQueue(request, env, "/");
+      if (url.pathname === "/api/queue" && request.method === "POST") return await proxyRunQueue(request, env, "/enqueue");
+      if (url.pathname === "/api/queue/reorder" && request.method === "POST") return await proxyRunQueue(request, env, "/reorder");
+      if (url.pathname === "/api/queue/remove" && request.method === "POST") return await proxyRunQueue(request, env, "/remove");
+      if (url.pathname === "/api/queue/cancel" && request.method === "POST") return await proxyRunQueue(request, env, "/cancel");
+      if (url.pathname === "/api/queue/clear" && request.method === "POST") return await proxyRunQueue(request, env, "/clear");
       if (url.pathname === "/api/run" && request.method === "POST") return await apiRun(request, env);
       if (url.pathname === "/api/cancel" && request.method === "POST") return await apiCancel(request, env);
       if (url.pathname === "/api/run-status" && request.method === "GET") return await apiRunStatus(url, env);
@@ -294,7 +325,7 @@ export default {
       if (url.pathname === "/api/log" && request.method === "GET") return await apiJobLog(url, env);
       return json({ error: "Not found" }, 404);
     } catch (error) {
-      if (error instanceof HttpError) return json({ error: error.message, details: error.details }, error.status);
+      if (error instanceof HttpError || error instanceof DownloadError) return json({ error: error.message, details: error.details }, error.status);
       return json({ error: String(error?.message || error) }, 500);
     }
   },

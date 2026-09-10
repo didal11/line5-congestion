@@ -7,6 +7,7 @@ on:
       - "**"
     paths:
       - notion-ide/worker/**
+      - notion-ide/live_log_exec.py
       - .github/workflows/notion-ide-*.yml
 
 permissions:
@@ -33,6 +34,29 @@ jobs:
           node --check notion-ide/worker/src/ui.js
           node --check notion-ide/worker/src/file-import.js
           node --check notion-ide/worker/src/file-delete.js
+          node --check notion-ide/worker/src/file-ops.js
+          node --check notion-ide/worker/src/file-download.js
+          node --check notion-ide/worker/src/search.js
+          node --check notion-ide/worker/src/history.js
+          node --check notion-ide/worker/src/run-queue.js
+          node --check notion-ide/worker/public/ide-productivity.js
+
+      - name: Check Python runner wrapper
+        run: python -m py_compile notion-ide/live_log_exec.py
+
+      - name: Verify structured run arguments
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/notion_args_probe.py <<'PY'
+          import json
+          import sys
+          print(json.dumps(sys.argv[1:], ensure_ascii=False))
+          PY
+          NOTION_IDE_ARGS_JSON='["hello world","--flag","A B"]' \
+            python notion-ide/live_log_exec.py /tmp/notion_args_probe.py > /tmp/notion_args_output.txt
+          cat /tmp/notion_args_output.txt
+          grep -F '["hello world", "--flag", "A B"]' /tmp/notion_args_output.txt
 
       - name: Check embedded browser script syntax
         shell: bash

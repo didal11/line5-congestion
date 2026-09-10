@@ -32,6 +32,19 @@ def resolve_command(entrypoint: str) -> list[str]:
     return [python, "-m", module]
 
 
+def resolve_run_args() -> list[str]:
+    raw = os.environ.get("NOTION_IDE_ARGS_JSON", "[]")
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid NOTION_IDE_ARGS_JSON: {exc}") from exc
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError("NOTION_IDE_ARGS_JSON must be a JSON array of strings")
+    if len(value) > 40 or sum(len(item) for item in value) > 6000:
+        raise ValueError("run arguments exceed IDE limits")
+    return value
+
+
 def post_live_log(text: str, *, done: bool = False, exit_code: int | None = None) -> None:
     url = os.environ.get("LIVE_LOG_URL", "").strip()
     key = os.environ.get("LIVE_LOG_KEY", "")
@@ -88,8 +101,13 @@ def main() -> int:
         return 2
 
     entrypoint = sys.argv[1]
-    command = resolve_command(entrypoint)
-    printable = " ".join(command)
+    try:
+        command = resolve_command(entrypoint) + resolve_run_args()
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr, flush=True)
+        return 2
+
+    printable = subprocess.list2cmdline(command)
     print(f"+ {printable}", flush=True)
 
     env = os.environ.copy()

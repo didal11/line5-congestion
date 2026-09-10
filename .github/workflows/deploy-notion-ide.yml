@@ -77,6 +77,7 @@ jobs:
           test "$FONT_BYTES" -gt 100000
           grep -q 'CascadiaCode-Regular.woff2' /tmp/notion-ide.html
           grep -q 'id="activeLine"' /tmp/notion-ide.html
+          grep -q 'ide-productivity.js' /tmp/notion-ide.html
 
       - name: Smoke test explorer API
         shell: bash

@@ -12,6 +12,10 @@ on:
         description: Python module or relative .py path from the repository root
         required: true
         default: src.train
+      args_json:
+        description: JSON array of command-line argument strings
+        required: false
+        default: "[]"
 
 permissions:
   contents: read
@@ -53,34 +57,49 @@ jobs:
           path: .venv
           key: ${{ runner.os }}-venv-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('requirements.txt') }}
 
-      - name: Resolve entrypoint
+      - name: Resolve request
         id: request
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_ENTRYPOINT: ${{ inputs.entrypoint }}
+          DISPATCH_ARGS_JSON: ${{ inputs.args_json }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            ENTRYPOINT='${{ inputs.entrypoint }}'
-          else
-            ENTRYPOINT="$(python - <<'PY'
+          python - <<'PY'
           import json
-          from pathlib import Path
-          data = json.loads(Path('notion-ide/run-request.json').read_text(encoding='utf-8'))
-          print(data['entrypoint'])
-          PY
-          )"
-          fi
-          python - "$ENTRYPOINT" <<'PY'
+          import os
           import re
-          import sys
-          value = sys.argv[1]
-          if not value or '..' in value or not re.fullmatch(r'[A-Za-z0-9_./-]+', value):
-              raise SystemExit(f'invalid entrypoint: {value!r}')
+          from pathlib import Path
+
+          if os.environ["EVENT_NAME"] == "workflow_dispatch":
+              entrypoint = os.environ.get("DISPATCH_ENTRYPOINT", "")
+              raw_args = os.environ.get("DISPATCH_ARGS_JSON", "[]") or "[]"
+              try:
+                  args = json.loads(raw_args)
+              except json.JSONDecodeError as exc:
+                  raise SystemExit(f"invalid args_json: {exc}")
+          else:
+              data = json.loads(Path("notion-ide/run-request.json").read_text(encoding="utf-8"))
+              entrypoint = data.get("entrypoint", "")
+              args = data.get("args", [])
+
+          if not entrypoint or ".." in entrypoint or not re.fullmatch(r"[A-Za-z0-9_./-]+", entrypoint):
+              raise SystemExit(f"invalid entrypoint: {entrypoint!r}")
+          if not isinstance(args, list) or not all(isinstance(item, str) for item in args):
+              raise SystemExit("args must be a JSON array of strings")
+          if len(args) > 40 or sum(len(item) for item in args) > 6000:
+              raise SystemExit("run arguments exceed IDE limits")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              print(f"entrypoint={entrypoint}", file=output)
+              print("args_json=" + json.dumps(args, ensure_ascii=False, separators=(",", ":")), file=output)
           PY
-          echo "entrypoint=$ENTRYPOINT" >> "$GITHUB_OUTPUT"
 
       - name: Run Python
         shell: bash
         env:
           ENTRYPOINT: ${{ steps.request.outputs.entrypoint }}
+          NOTION_IDE_ARGS_JSON: ${{ steps.request.outputs.args_json }}
           LIVE_LOG_URL: https://line5-notion-ide.alstn101059.workers.dev/api/live-log
           LIVE_LOG_KEY: ${{ secrets.NOTION_IDE_KEY }}
           LIVE_LOG_RUN_ID: ${{ github.run_id }}
