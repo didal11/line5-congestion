@@ -54,45 +54,49 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/notebook-smoke.mjs <<'JS'
-          import { chromium } from 'playwright-core';
-          import { execFileSync } from 'node:child_process';
+          cat > /tmp/notebook-smoke.cjs <<'JS'
+          const { chromium } = require(process.cwd() + '/node_modules/playwright-core');
+          const { execFileSync } = require('node:child_process');
           const candidates=['google-chrome','chromium','chromium-browser'];
           let executablePath='';
           for (const name of candidates) {
             try { executablePath=execFileSync('which',[name],{encoding:'utf8'}).trim(); if(executablePath)break; } catch {}
           }
           if(!executablePath)throw new Error('Chromium executable not found');
-          const browser=await chromium.launch({headless:true,executablePath,args:['--no-sandbox']});
-          const page=await browser.newPage({viewport:{width:1400,height:1000}});
-          await page.goto(process.env.BASE,{waitUntil:'networkidle'});
-          await page.locator('#key').fill(process.env.IDE_KEY);
-          await page.locator('#connect').click();
-          await page.waitForFunction(()=>document.querySelector('#connection')?.textContent==='connected');
-          const row=page.locator(`.tree-row[data-path="${process.env.NOTEBOOK_PATH}"]`);
-          await row.waitFor({state:'visible'});
-          await row.click();
-          await page.locator('#notebookShell:not(.hidden)').waitFor({state:'visible'});
-          if(await page.locator('.nb-cell').count()!==3)throw new Error('expected 3 notebook cells');
-          const rendered=await page.locator('.nb-markdown-render').first().innerText();
-          if(!rendered.includes('Notebook Smoke')||!rendered.includes('Rendered markdown'))throw new Error('markdown did not render');
-          const code=page.locator('.nb-code-editor').first();
-          if((await code.inputValue())!=="print('hello')")throw new Error('code source mismatch');
-          const output=await page.locator('.nb-output').first().innerText();
-          if(!output.includes('hello-output'))throw new Error('stdout output missing');
-          await code.fill("print('changed from notebook ui')");
-          await page.locator('.nb-toolbar button', {hasText:'+ Markdown'}).click();
-          if(await page.locator('.nb-cell').count()!==4)throw new Error('cell append failed');
-          await page.locator('#save').click();
-          await page.waitForFunction(()=>document.querySelector('#saveState')?.textContent?.startsWith('saved '));
-          await page.locator('.nb-toolbar button', {hasText:'Raw JSON'}).click();
-          await page.locator('.nb-raw').waitFor({state:'visible'});
-          const raw=await page.locator('.nb-raw').innerText();
-          const parsed=JSON.parse(raw);
-          if(parsed.nbformat!==4||parsed.cells.length!==4)throw new Error('raw notebook view mismatch');
-          await browser.close();
+          (async()=>{
+            const browser=await chromium.launch({headless:true,executablePath,args:['--no-sandbox']});
+            const page=await browser.newPage({viewport:{width:1400,height:1000}});
+            page.on('pageerror', error => console.error('PAGEERROR', error));
+            page.on('console', msg => console.log('BROWSER', msg.type(), msg.text()));
+            await page.goto(process.env.BASE,{waitUntil:'networkidle'});
+            await page.locator('#key').fill(process.env.IDE_KEY);
+            await page.locator('#connect').click();
+            await page.waitForFunction(()=>document.querySelector('#connection')?.textContent==='connected');
+            const row=page.locator(`.tree-row[data-path="${process.env.NOTEBOOK_PATH}"]`);
+            await row.waitFor({state:'visible'});
+            await row.click();
+            await page.locator('#notebookShell:not(.hidden)').waitFor({state:'visible'});
+            if(await page.locator('.nb-cell').count()!==3)throw new Error('expected 3 notebook cells');
+            const rendered=await page.locator('.nb-markdown-render').first().innerText();
+            if(!rendered.includes('Notebook Smoke')||!rendered.includes('Rendered markdown'))throw new Error('markdown did not render');
+            const code=page.locator('.nb-code-editor').first();
+            if((await code.inputValue())!=="print('hello')")throw new Error('code source mismatch');
+            const output=await page.locator('.nb-output').first().innerText();
+            if(!output.includes('hello-output'))throw new Error('stdout output missing');
+            await code.fill("print('changed from notebook ui')");
+            await page.locator('.nb-toolbar button', {hasText:'+ Markdown'}).click();
+            if(await page.locator('.nb-cell').count()!==4)throw new Error('cell append failed');
+            await page.locator('#save').click();
+            await page.waitForFunction(()=>document.querySelector('#saveState')?.textContent?.startsWith('saved '));
+            await page.locator('.nb-toolbar button', {hasText:'Raw JSON'}).click();
+            await page.locator('.nb-raw').waitFor({state:'visible'});
+            const raw=await page.locator('.nb-raw').innerText();
+            const parsed=JSON.parse(raw);
+            if(parsed.nbformat!==4||parsed.cells.length!==4)throw new Error('raw notebook view mismatch');
+            await browser.close();
+          })().catch(error=>{console.error(error);process.exit(1)});
           JS
-          BASE="$BASE" IDE_KEY="$IDE_KEY" NOTEBOOK_PATH="$NOTEBOOK_PATH" node /tmp/notebook-smoke.mjs
+          BASE="$BASE" IDE_KEY="$IDE_KEY" NOTEBOOK_PATH="$NOTEBOOK_PATH" node /tmp/notebook-smoke.cjs
 
       - name: Verify saved nbformat round trip
         shell: bash
