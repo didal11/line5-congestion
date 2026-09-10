@@ -1,0 +1,50 @@
+name: Temporary Notion IDE Productivity Pack Patch
+
+on:
+  push:
+    branches:
+      - feat/ide-productivity-pack
+    paths:
+      - .github/scripts/patch_productivity_pack.py
+      - .github/workflows/notion-ide-temp-productivity-pack.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply integration patch
+        run: python .github/scripts/patch_productivity_pack.py
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check notion-ide/worker/src/app.js
+          node --check notion-ide/worker/src/file-ops.js
+          node --check notion-ide/worker/src/file-download.js
+          node --check notion-ide/worker/src/search.js
+          node --check notion-ide/worker/src/history.js
+          node --check notion-ide/worker/src/run-queue.js
+          node --check notion-ide/worker/public/ide-productivity.js
+
+      - name: Check Python wrapper
+        run: python -m py_compile notion-ide/live_log_exec.py
+
+      - name: Commit integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add notion-ide/worker/src/app.js notion-ide/worker/wrangler.toml .github/workflows/notion-ide-validate.yml
+          if git diff --cached --quiet; then
+            echo 'No integration changes.'
+            exit 0
+          fi
+          git commit -m 'wire IDE productivity APIs and run queue'
+          git push
