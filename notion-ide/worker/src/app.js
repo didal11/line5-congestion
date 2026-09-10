@@ -1,5 +1,6 @@
 import { UI } from "./ui.js";
 import { LiveLogDurableObject } from "./live-log.js";
+import { apiImportFiles } from "./file-import.js";
 
 export { LiveLogDurableObject };
 
@@ -280,6 +281,7 @@ export default {
       if (url.pathname === "/api/list" && request.method === "GET") return await apiList(url, env);
       if (url.pathname === "/api/file" && request.method === "GET") return await apiFileGet(url, env);
       if (url.pathname === "/api/file" && request.method === "PUT") return await apiFilePut(request, env);
+      if (url.pathname === "/api/import" && request.method === "POST") return await apiImportFiles(request, env);
       if (url.pathname === "/api/run" && request.method === "POST") return await apiRun(request, env);
       if (url.pathname === "/api/cancel" && request.method === "POST") return await apiCancel(request, env);
       if (url.pathname === "/api/run-status" && request.method === "GET") return await apiRunStatus(url, env);
