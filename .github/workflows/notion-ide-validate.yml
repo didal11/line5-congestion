@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Check Worker JavaScript syntax
+      - name: Check Worker and notebook JavaScript syntax
         run: |
           node --check notion-ide/worker/src/index.js
           node --check notion-ide/worker/src/app.js
