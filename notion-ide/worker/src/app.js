@@ -311,6 +311,8 @@ export default {
       if (url.pathname === "/api/revert" && request.method === "POST") return await apiRevertCommit(request, env);
       if (url.pathname === "/api/queue" && request.method === "GET") return await proxyRunQueue(request, env, "/");
       if (url.pathname === "/api/queue" && request.method === "POST") return await proxyRunQueue(request, env, "/enqueue");
+      if (url.pathname === "/api/queue/reorder" && request.method === "POST") return await proxyRunQueue(request, env, "/reorder");
+      if (url.pathname === "/api/queue/remove" && request.method === "POST") return await proxyRunQueue(request, env, "/remove");
       if (url.pathname === "/api/queue/cancel" && request.method === "POST") return await proxyRunQueue(request, env, "/cancel");
       if (url.pathname === "/api/queue/clear" && request.method === "POST") return await proxyRunQueue(request, env, "/clear");
       if (url.pathname === "/api/run" && request.method === "POST") return await apiRun(request, env);
