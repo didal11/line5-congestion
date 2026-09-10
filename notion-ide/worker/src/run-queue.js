@@ -65,6 +65,7 @@ export class RunQueueDurableObject {
     if(!item){ item=state.items.find(i=>i.status==="WAITING"); if(item){ state.active_id=item.id; item.status="REQUESTING"; item.started_at=new Date().toISOString(); item.error=null; item.error_count=0; await this.save(state); } }
     if(!item){ this.trim(state); await this.save(state); return; }
     try {
+      if(item.cancel_requested && !item.request_commit_sha){ item.status="CANCELLED"; item.completed_at=new Date().toISOString(); state.active_id=null; this.trim(state); await this.save(state); if(state.items.some(i=>i.status==="WAITING"))await this.schedule(150); return; }
       if(!item.request_commit_sha){ item.request_commit_sha=await this.createRunRequest(item); item.status="WAITING_FOR_RUN"; await this.save(state); await this.schedule(2500); return; }
       const run=await this.findRun(item);
       if(!run){ item.status=item.cancel_requested?"CANCEL_REQUESTED":"WAITING_FOR_RUN"; await this.save(state); await this.schedule(3000); return; }
@@ -96,7 +97,7 @@ export class RunQueueDurableObject {
     if(url.pathname==="/cancel" && request.method==="POST"){
       const body=await request.json(), item=state.items.find(i=>i.id===String(body.id||"")); if(!item)return Response.json({error:"queue item not found"},{status:404});
       if(["SUCCESS","FAILED","CANCELLED","TIMED_OUT","IDE_ERROR"].includes(item.status))return Response.json({ok:true,item:publicItem(item)});
-      if(item.status==="WAITING"){item.status="CANCELLED";item.completed_at=new Date().toISOString()}else{item.cancel_requested=true;item.status="CANCEL_REQUESTED"}
+      if(item.status==="WAITING" || (item.status==="REQUESTING" && !item.request_commit_sha)){item.status="CANCELLED";item.completed_at=new Date().toISOString();if(state.active_id===item.id)state.active_id=null}else{item.cancel_requested=true;item.status="CANCEL_REQUESTED"}
       await this.save(state); await this.schedule(100); return Response.json({ok:true,item:publicItem(item)});
     }
     if(url.pathname==="/clear" && request.method==="POST"){
