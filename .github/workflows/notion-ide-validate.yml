@@ -40,6 +40,7 @@ jobs:
           node --check notion-ide/worker/src/history.js
           node --check notion-ide/worker/src/run-queue.js
           node --check notion-ide/worker/public/ide-productivity.js
+          node --check notion-ide/worker/public/notebook-editor.js
 
       - name: Check Python runner wrapper
         run: python -m py_compile notion-ide/live_log_exec.py
