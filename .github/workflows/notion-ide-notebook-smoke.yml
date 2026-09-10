@@ -72,6 +72,7 @@ jobs:
             await page.locator('#key').fill(process.env.IDE_KEY);
             await page.locator('#connect').click();
             await page.waitForFunction(()=>document.querySelector('#connection')?.textContent==='connected');
+
             const row=page.locator(`.tree-row[data-path="${process.env.NOTEBOOK_PATH}"]`);
             await row.waitFor({state:'visible'});
             await row.click();
@@ -93,6 +94,14 @@ jobs:
             const raw=await page.locator('.nb-raw').innerText();
             const parsed=JSON.parse(raw);
             if(parsed.nbformat!==4||parsed.cells.length!==4)throw new Error('raw notebook view mismatch');
+
+            await page.evaluate(async()=>{ await openFile('src/EX_01_Perceptron.ipynb'); });
+            await page.waitForFunction(()=>document.querySelector('#path')?.value==='src/EX_01_Perceptron.ipynb');
+            if(await page.locator('.nb-cell').count()!==10)throw new Error('existing EX_01 should render as 10 cells');
+            const realText=await page.locator('#notebookShell').innerText();
+            if(!realText.includes('Perceptron 구현'))throw new Error('existing markdown title missing');
+            if(!realText.includes('NumPy Version :2.0.2'))throw new Error('existing stdout missing');
+            if(!realText.includes('y = 1.0'))throw new Error('existing final output missing');
             await browser.close();
           })().catch(error=>{console.error(error);process.exit(1)});
           JS
