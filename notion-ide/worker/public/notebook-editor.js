@@ -28,6 +28,54 @@
   function textValue(value) { return Array.isArray(value) ? value.join('') : String(value ?? ''); }
   function notebookBuffer() { const b = currentBuffer(); return b && isNotebookPath(b.path) ? b : null; }
 
+  let mathJaxPromise = null;
+  function ensureMathJax() {
+    if (globalThis.MathJax?.typesetPromise) return Promise.resolve(globalThis.MathJax);
+    if (mathJaxPromise) return mathJaxPromise;
+    globalThis.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true,
+      },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] },
+    };
+    mathJaxPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.id = 'notebookMathJax';
+      script.async = true;
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+      script.onload = () => resolve(globalThis.MathJax);
+      script.onerror = () => reject(new Error('MathJax failed to load'));
+      document.head.appendChild(script);
+    });
+    return mathJaxPromise;
+  }
+
+  async function typesetMath(root) {
+    try {
+      const mathJax = await ensureMathJax();
+      if (mathJax.typesetClear) mathJax.typesetClear([root]);
+      await mathJax.typesetPromise([root]);
+    } catch (error) {
+      console.warn('Notebook math rendering unavailable', error);
+    }
+  }
+
+  function protectInlineMath(text) {
+    const items = [];
+    const tokenized = String(text ?? '').replace(/(\\\\\([^\n]*?\\\\\)|\$[^$\n]+?\$)/g, value => {
+      const token = `NBMATHTOKEN${items.length}END`;
+      items.push(value);
+      return token;
+    });
+    return { tokenized, items };
+  }
+
+  function restoreMathTokens(html, items) {
+    return html.replace(/NBMATHTOKEN(\d+)END/g, (_, index) => escapeHtml(items[Number(index)] || ''));
+  }
+
   function ensureNotebookDoc(buffer) {
     if (notebookDocs.has(buffer)) return notebookDocs.get(buffer);
     let doc;
@@ -61,17 +109,24 @@
   }
 
   function inlineMarkdown(text) {
-    let s = escapeHtml(text);
+    const protectedMath = protectInlineMath(text);
+    let s = escapeHtml(protectedMath.tokenized);
     s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
     s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
     s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
     s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
-    return s;
+    return restoreMathTokens(s, protectedMath.items);
   }
 
   function renderMarkdown(text) {
-    const lines = String(text || '').split('\n');
+    const displayMath = [];
+    const normalized = String(text || '').replace(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g, value => {
+      const token = `NBMATHBLOCK${displayMath.length}END`;
+      displayMath.push(value);
+      return token;
+    });
+    const lines = normalized.split('\n');
     let html = '', inFence = false, fence = [], listType = '';
     const closeList = () => { if (listType) { html += `</${listType}>`; listType = ''; } };
     for (const line of lines) {
@@ -96,6 +151,7 @@
     }
     closeList();
     if (inFence) html += `<pre><code>${escapeHtml(fence.join('\n'))}</code></pre>`;
+    html = html.replace(/NBMATHBLOCK(\d+)END/g, (_, index) => escapeHtml(displayMath[Number(index)] || ''));
     return html || '<span class="nb-output-note">Empty markdown cell</span>';
   }
 
@@ -150,13 +206,13 @@
     edit.addEventListener('input',()=>{setCellSource(cell,edit.value);markNotebookDirty();sync()});
     edit.addEventListener('scroll',()=>{high.scrollTop=edit.scrollTop;high.scrollLeft=edit.scrollLeft});
     edit.addEventListener('keydown',event=>{if(event.key==='Tab'){event.preventDefault();const s=edit.selectionStart,e=edit.selectionEnd;edit.setRangeText('    ',s,e,'end');setCellSource(cell,edit.value);markNotebookDirty();sync()}});
-    wrap.append(high,edit); body.appendChild(wrap); sync(); renderOutputs(cell,body);
+    wrap.append(high,edit); body.appendChild(wrap); sync();
   }
 
   function renderMarkdownCell(doc, cell, index, body, editButton) {
     const render=document.createElement('div'); render.className='nb-markdown-render'; render.innerHTML=renderMarkdown(sourceText(cell));
     const editor=document.createElement('textarea'); editor.className='nb-markdown-editor hidden'; editor.spellcheck=false; editor.value=sourceText(cell);
-    const setEditing=(editing)=>{render.classList.toggle('hidden',editing);editor.classList.toggle('hidden',!editing);editButton.textContent=editing?'Done':'Edit';if(editing){editor.focus();editor.selectionStart=editor.value.length;editor.selectionEnd=editor.value.length}else render.innerHTML=renderMarkdown(editor.value)};
+    const setEditing=(editing)=>{render.classList.toggle('hidden',editing);editor.classList.toggle('hidden',!editing);editButton.textContent=editing?'Done':'Edit';if(editing){editor.focus();editor.selectionStart=editor.value.length;editor.selectionEnd=editor.value.length}else{render.innerHTML=renderMarkdown(editor.value);typesetMath(render)}};
     editButton.onclick=()=>setEditing(!render.classList.contains('hidden'));
     render.ondblclick=()=>setEditing(true);
     editor.addEventListener('input',()=>{setCellSource(cell,editor.value);markNotebookDirty()});
@@ -166,7 +222,7 @@
   function renderCell(doc, cell, index) {
     const card=document.createElement('section'); card.className='nb-cell';
     const head=document.createElement('div'); head.className='nb-cell-head';
-    const label=document.createElement('span'); label.className='nb-cell-label'; label.textContent=cell.cell_type==='code'?(cell.execution_count==null?'[ ]':`[${cell.execution_count}]`):'MD';
+    const label=document.createElement('span'); label.className='nb-cell-label'; label.textContent=cell.cell_type==='code'?'PY':'MD';
     const type=document.createElement('select'); type.innerHTML='<option value="code">Code</option><option value="markdown">Markdown</option>'; type.value=cell.cell_type==='markdown'?'markdown':'code'; type.onchange=()=>changeCellType(doc,cell,type.value);
     const actions=document.createElement('span'); actions.className='nb-cell-actions';
     const up=document.createElement('button');up.type='button';up.textContent='↑';up.title='Move cell up';up.disabled=index===0;up.onclick=()=>moveCell(doc,index,-1);
@@ -187,19 +243,20 @@
     const title=document.createElement('strong');title.textContent='NOTEBOOK';
     const meta=document.createElement('span');meta.className='nb-meta';meta.textContent=doc.__invalid?'invalid JSON':`${doc.cells.length} cells · nbformat ${doc.nbformat}.${doc.nbformat_minor}`;
     const grow=document.createElement('span');grow.className='nb-grow';
+    const runAll=document.createElement('button');runAll.type='button';runAll.textContent='Run All ▶';runAll.title='Save and run every Python code cell from top to bottom in one process';runAll.disabled=Boolean(doc.__invalid);runAll.onclick=async()=>{try{if(b.dirty)await saveFile();await run()}catch(error){showError(error)}};
     const addCode=document.createElement('button');addCode.type='button';addCode.textContent='+ Code';addCode.disabled=Boolean(doc.__invalid);addCode.onclick=()=>addCell('code');
     const addMd=document.createElement('button');addMd.type='button';addMd.textContent='+ Markdown';addMd.disabled=Boolean(doc.__invalid);addMd.onclick=()=>addCell('markdown');
-    const raw=document.createElement('button');raw.type='button';raw.textContent=rawMode?'Notebook':'Raw JSON';raw.onclick=()=>{rawMode=!rawMode;renderNotebook()};
-    toolbar.append(title,meta,grow,addCode,addMd,raw);shell.appendChild(toolbar);
+    toolbar.append(title,meta,grow,runAll,addCode,addMd);shell.appendChild(toolbar);
     if(doc.__invalid){const err=document.createElement('div');err.className='nb-invalid';err.textContent=`This file is not valid notebook JSON: ${doc.__error}`;shell.appendChild(err);const pre=document.createElement('pre');pre.className='nb-raw';pre.textContent=String(doc.__raw||'');shell.appendChild(pre);return;}
-    if(rawMode){const pre=document.createElement('pre');pre.className='nb-raw';pre.textContent=JSON.stringify(doc,null,2);shell.appendChild(pre);return;}
     const cells=document.createElement('div');cells.className='nb-cells';for(let i=0;i<doc.cells.length;i++)cells.appendChild(renderCell(doc,doc.cells[i],i));shell.appendChild(cells);
     if(!doc.cells.length){const empty=document.createElement('div');empty.className='nb-empty';empty.textContent='Empty notebook — add a Code or Markdown cell.';shell.appendChild(empty)}
+    typesetMath(shell);
   }
 
   function setNotebookMode(active) {
     shell.classList.toggle('hidden',!active);
     for(const id of ['editor','highlight','lineNumbers','activeLine']) { const el=$(id); if(el)el.classList.toggle('nb-hidden-editor',active); }
+    if($('run')) $('run').textContent=active?'Run All ▶':'Run ▶';
   }
 
   captureCurrentBuffer = function() {
