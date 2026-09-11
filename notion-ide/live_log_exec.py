@@ -15,6 +15,8 @@ MAX_BATCH_BYTES = 256 * 1024
 
 def resolve_command(entrypoint: str) -> list[str]:
     python = sys.executable
+    if entrypoint.lower().endswith(".ipynb"):
+        return [python, "notion-ide/notebook_exec.py", entrypoint]
     if not entrypoint.endswith(".py"):
         return [python, "-m", entrypoint]
 
