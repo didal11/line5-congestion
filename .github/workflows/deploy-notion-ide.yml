@@ -62,7 +62,7 @@ jobs:
             https://line5-notion-ide.alstn101059.workers.dev/ > /tmp/notion-ide.html
           test -s /tmp/notion-ide.html
 
-      - name: Smoke test bundled editor font
+      - name: Smoke test bundled editor assets
         shell: bash
         run: |
           set -euo pipefail
@@ -78,6 +78,10 @@ jobs:
           grep -q 'CascadiaCode-Regular.woff2' /tmp/notion-ide.html
           grep -q 'id="activeLine"' /tmp/notion-ide.html
           grep -q 'ide-productivity.js' /tmp/notion-ide.html
+          grep -q 'notebook-editor.js' /tmp/notion-ide.html
+          curl --fail --show-error --silent "$BASE/notebook-editor.js" > /tmp/notebook-editor.js
+          grep -q 'Run All' /tmp/notebook-editor.js
+          grep -q 'MathJax' /tmp/notebook-editor.js
 
       - name: Smoke test explorer API
         shell: bash
