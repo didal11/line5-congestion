@@ -8,6 +8,7 @@ on:
     paths:
       - notion-ide/worker/**
       - notion-ide/live_log_exec.py
+      - notion-ide/notebook_exec.py
       - .github/workflows/notion-ide-*.yml
 
 permissions:
@@ -42,8 +43,8 @@ jobs:
           node --check notion-ide/worker/public/ide-productivity.js
           node --check notion-ide/worker/public/notebook-editor.js
 
-      - name: Check Python runner wrapper
-        run: python -m py_compile notion-ide/live_log_exec.py
+      - name: Check Python runner wrappers
+        run: python -m py_compile notion-ide/live_log_exec.py notion-ide/notebook_exec.py
 
       - name: Verify structured run arguments
         shell: bash
@@ -58,6 +59,33 @@ jobs:
             python notion-ide/live_log_exec.py /tmp/notion_args_probe.py > /tmp/notion_args_output.txt
           cat /tmp/notion_args_output.txt
           grep -F '["hello world", "--flag", "A B"]' /tmp/notion_args_output.txt
+
+      - name: Verify notebook Run All shares one Python state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          notebook = {
+              "cells": [
+                  {"cell_type":"markdown","metadata":{},"source":["# ignored markdown"]},
+                  {"cell_type":"code","execution_count":99,"metadata":{},"outputs":[{"output_type":"stream","name":"stdout","text":["STALE_OUTPUT_MUST_NOT_RUN\n"]}],"source":["value = 40\n","def plus_two(x):\n","    return x + 2\n"]},
+                  {"cell_type":"code","execution_count":100,"metadata":{},"outputs":[],"source":["print('RUN_ALL_RESULT', plus_two(value))\n","print('ARGV', __import__('sys').argv[1:])\n"]}
+              ],
+              "metadata":{},
+              "nbformat":4,
+              "nbformat_minor":5
+          }
+          Path('/tmp/notebook_runall.ipynb').write_text(json.dumps(notebook), encoding='utf-8')
+          PY
+          NOTION_IDE_ARGS_JSON='["hello world"]' \
+            python notion-ide/live_log_exec.py /tmp/notebook_runall.ipynb > /tmp/notebook_runall_output.txt
+          cat /tmp/notebook_runall_output.txt
+          grep -F 'RUN_ALL_RESULT 42' /tmp/notebook_runall_output.txt
+          grep -F "ARGV ['hello world']" /tmp/notebook_runall_output.txt
+          grep -F '[notebook] completed 2 code cell(s)' /tmp/notebook_runall_output.txt
+          ! grep -F 'STALE_OUTPUT_MUST_NOT_RUN' /tmp/notebook_runall_output.txt
 
       - name: Check embedded browser script syntax
         shell: bash
