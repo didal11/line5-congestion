@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - feat/notebook-editor
     paths:
       - notion-ide/worker/**
       - .github/workflows/deploy-notion-ide.yml
@@ -80,8 +81,8 @@ jobs:
           grep -q 'ide-productivity.js' /tmp/notion-ide.html
           grep -q 'notebook-editor.js' /tmp/notion-ide.html
           curl --fail --show-error --silent "$BASE/notebook-editor.js" > /tmp/notebook-editor.js
-          grep -q 'NOTEBOOK' /tmp/notebook-editor.js
-          grep -q 'Raw JSON' /tmp/notebook-editor.js
+          grep -q 'Run All' /tmp/notebook-editor.js
+          grep -q 'MathJax' /tmp/notebook-editor.js
 
       - name: Smoke test explorer API
         shell: bash
